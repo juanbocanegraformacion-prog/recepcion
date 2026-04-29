@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 # ------------------------------------------------------------
 # CONFIGURACIÓN DE PÁGINA
 # ------------------------------------------------------------
-st.set_page_config(page_title="Monitor ODC - RIOMARKET", layout="wide")
+st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
 # CSS PERSONALIZADO (carrusel y ajustes visuales)
