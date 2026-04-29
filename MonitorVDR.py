@@ -1,10 +1,10 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import io
-import requests
-import json
 import math
+import json
+import requests
+import io
 
 # ------------------------------------------------------------
 # CONFIGURACIÓN DE PÁGINA
@@ -12,49 +12,75 @@ import math
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS (desde Excel o de ejemplo)
+# CARGA DE DATOS DESDE EXCEL O DATOS DE EJEMPLO
 # ------------------------------------------------------------
-# En producción se usaría la URL real del archivo Excel en GitHub.
-# Ejemplo: url = "https://raw.githubusercontent.com/tu_usuario/tu_repo/main/Reporte-Consolidado-Compras-Producto.xlsx"
-# Aquí usamos un pequeño DataFrame de muestra con las columnas requeridas.
-sample_data = [
-    # Sucursal (A), VDR (B), Estatus (G), ODC (H), Tipo ODC (I), Producto (Q), Proveedor (AA), Esp. (AD), Rec. (AF)
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial", "DETERGENTE EN POLVO FRAGANCIA CITRICA LAS LLAVES 900 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 50, 50],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial", "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 400GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 36, 32],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial", "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 900GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 10, 10],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial", "CERVEZA POLAR LIGHT RET 222ML", "CERVECERIA POLAR, C.A.", 540, 540],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial", "GAVERA DE CERVEZA POLAR", "CERVECERIA POLAR, C.A.", 15, 15],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial", "REFRESCO ZERO PEPSI 2L", "PEPSI-COLA VENEZUELA C.A.", 12, 12],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial", "REFRESCO SABOR PIÑA PET GOLDEN 2L", "PEPSI-COLA VENEZUELA C.A.", 30, 30],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial", "REFRESCO KOLITA GOLDEN 2 L", "PEPSI-COLA VENEZUELA C.A.", 54, 54],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial", "REFRESCO KOLITA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial", "REFRESCO DE PIÑA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-    # Agregar más registros si se quiere probar más páginas
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014434", "En validación", "ODC-01-001-00015799", "Total", "MORTADELA DE POLLO SUPERIOR HERMO 1 KG.", "INDUSTRIAS ALIMENTICIAS HERMO DE VENEZUELA S.A.", 20, 15],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014435", "Pendiente por validar", "ODC-01-005-00013785", "Parcial", "PAÑAL ACTIVESEC DISNEY TALLA XG HUGGIES 25 UND", "DIMASSI, C.A.", 24, 8],
-    ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014436", "Anulada", "ODC-01-016-00016341", "Parcial", "JAMON ESPALDA AHUMADA VISKING DELGADO ALIMEX 1.6 KG", "PRODUCTOS ALIMEX, C.A.", 21, 0],
-]
+@st.cache_data(show_spinner=False)
+def load_data():
+    # URL real del archivo Excel en GitHub (ajustar según corresponda)
+    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto.xlsx"
+    try:
+        res = requests.get(url)
+        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1")
+        # Seleccionar las columnas necesarias (ajustar nombres según encabezado real)
+        cols_map = {
+            'Sucursal': 'sucursal',
+            'N° Doc.Compra (VDR)': 'vdr',
+            'Estatus compra (VDR)': 'estatus',
+            'Número de orden de compra': 'odc',
+            'Tipo ODC': 'tipo_odc',
+            'Producto': 'producto',
+            'Proveedor de transacción': 'proveedor',  # columna AA
+            'Empaques Esperados': 'esperado',
+            'Empaques Recibidos': 'recibido'
+        }
+        df = df.rename(columns=cols_map)[list(cols_map.values())]
+    except Exception as e:
+        # Datos de ejemplo si falla la carga
+        st.warning(f"No se pudo cargar el archivo Excel ({e}). Usando datos de ejemplo.")
+        sample_data = [
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
+             "DETERGENTE EN POLVO FRAGANCIA CITRICA LAS LLAVES 900 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 50, 50],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
+             "DETERGENTE EN POLVO LIMPIEZA ACTIVA FLORAL LAS LLAVES 400 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 36, 32],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
+             "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 900GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 10, 10],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
+             "CERVEZA POLAR LIGHT RET 222ML", "CERVECERIA POLAR, C.A.", 540, 540],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
+             "GAVERA DE CERVEZA POLAR", "CERVECERIA POLAR, C.A.", 15, 15],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
+             "REFRESCO ZERO PEPSI 2L", "PEPSI-COLA VENEZUELA C.A.", 12, 12],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
+             "REFRESCO SABOR PIÑA PET GOLDEN 2L", "PEPSI-COLA VENEZUELA C.A.", 30, 30],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
+             "REFRESCO KOLITA GOLDEN 2 L", "PEPSI-COLA VENEZUELA C.A.", 54, 54],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
+             "REFRESCO KOLITA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
+             "REFRESCO DE PIÑA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014434", "En validación", "ODC-01-001-00015799", "Total",
+             "MORTADELA DE POLLO SUPERIOR HERMO 1 KG.", "INDUSTRIAS ALIMENTICIAS HERMO DE VENEZUELA S.A.", 20, 15],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014435", "Pendiente por validar", "ODC-01-005-00013785", "Parcial",
+             "PAÑAL ACTIVESEC DISNEY TALLA XG HUGGIES 25 UND", "DIMASSI, C.A.", 24, 8],
+            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014436", "Anulada", "ODC-01-016-00016341", "Parcial",
+             "JAMON ESPALDA AHUMADA VISKING DELGADO ALIMEX 1.6 KG", "PRODUCTOS ALIMEX, C.A.", 21, 0],
+        ]
+        df = pd.DataFrame(sample_data, columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
+    # Asegurar tipos numéricos
+    df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
+    df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
+    return df
 
-# Convertir a estructura deseada
-raw_columns = ["sucursal", "vdr", "estatus", "odc", "tipo_odc", "producto", "proveedor", "esperado", "recibido"]
-df_r = pd.DataFrame(sample_data, columns=raw_columns)
-
-# Asegurar tipos numéricos
-df_r["esperado"] = pd.to_numeric(df_r["esperado"], errors="coerce").fillna(0).astype(int)
-df_r["recibido"] = pd.to_numeric(df_r["recibido"], errors="coerce").fillna(0).astype(int)
-
-vdr_data = df_r.to_dict(orient="records")
+df = load_data()
+registros = df.to_dict(orient="records")
 
 # ------------------------------------------------------------
-# CONFIGURACIÓN DE PAGINACIÓN
+# PAGINACIÓN (10 registros por página)
 # ------------------------------------------------------------
 PAGE_SIZE = 10
-total_items = len(vdr_data)
-total_pages = max(1, math.ceil(total_items / PAGE_SIZE))
-
-pages = []
-for i in range(0, total_items, PAGE_SIZE):
-    pages.append(vdr_data[i:i+PAGE_SIZE])
+total = len(registros)
+total_pages = max(1, math.ceil(total / PAGE_SIZE))
+pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
 # HTML/CSS/JS DEL CARRUSEL PAGINADO
@@ -77,7 +103,6 @@ carrusel_html = f"""
             --shadow: 0 4px 12px rgba(0,0,0,0.1);
             --shadow-active: 0 0 20px rgba(46,125,50,0.4);
             --transition-speed: 0.4s;
-            --page-width: 95%;
             --font-stack: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             --mono-font: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
         }}
@@ -102,7 +127,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 700px;  /* altura suficiente para una página de 10 tarjetas */
+            height: 780px;  /* altura amplia para 10 tarjetas */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -118,18 +143,23 @@ carrusel_html = f"""
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: var(--page-width);
+            width: 95%;
             display: flex;
             flex-direction: column;
             gap: 12px;
             align-items: stretch;
+            padding: 10px;
+            background: rgba(255,255,255,0.85);
+            border-radius: var(--card-border-radius);
+            box-shadow: var(--shadow);
+            opacity: 0.7;
+            filter: brightness(0.95);
         }}
         .page-group.active {{
             box-shadow: var(--shadow-active);
             border: 2px solid var(--color-green);
-            border-radius: var(--card-border-radius);
-            padding: 10px;
-            background: rgba(255,255,255,0.9);
+            opacity: 1;
+            filter: brightness(1);
             z-index: 2;
         }}
         .vdr-card {{
@@ -195,7 +225,7 @@ carrusel_html = f"""
         .nav-controls {{
             display: flex;
             gap: 12px;
-            margin-top: 15px;
+            margin: 15px 0;
             align-items: center;
         }}
         .nav-btn {{
@@ -212,9 +242,22 @@ carrusel_html = f"""
             transition: background 0.2s;
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
-        .page-indicator {{
-            font-size: 0.9rem;
-            color: #333;
+        .dots {{
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }}
+        .dot {{
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #bbb;
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+        .dot.active-dot {{
+            background: var(--color-green);
+            transform: scale(1.2);
         }}
         .empty-state {{
             text-align: center;
@@ -226,32 +269,30 @@ carrusel_html = f"""
 </head>
 <body>
     <div class="carousel-wrapper" role="region" aria-label="Carrusel vertical de recepciones por página">
-        <button class="nav-btn prev" id="prevBtn" aria-label="Página anterior" title="Anterior">▲</button>
+        <button class="nav-btn prev" id="prevBtn" title="Página anterior">▲</button>
         <div class="carousel-viewport" id="viewport">
             <div class="carousel-track" id="track"></div>
         </div>
-        <button class="nav-btn next" id="nextBtn" aria-label="Página siguiente" title="Siguiente">▼</button>
-        <div class="nav-controls">
-            <span class="page-indicator" id="pageIndicator">Página 1 de {total_pages}</span>
-        </div>
+        <button class="nav-btn next" id="nextBtn" title="Página siguiente">▼</button>
+        <div class="dots" id="dots"></div>
         <div aria-live="polite" id="announce" style="position:absolute;left:-9999px"></div>
     </div>
 
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 660; // altura estimada por página
+        const PAGE_HEIGHT = 760;  // altura estimada de cada grupo de página
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
-        const pageIndicator = document.getElementById('pageIndicator');
+        const dotsContainer = document.getElementById('dots');
         const announcer = document.getElementById('announce');
 
-        let currentPageIndex = 0;
-        let autoPlayTimer = null;
-        let isPaused = false;
+        let currentPage = 0;
+        let autoTimer = null;
+        let paused = false;
 
         function getStatusClass(estatus) {{
             const n = estatus.trim().toLowerCase().replace(/\\s+/g, '-');
@@ -262,11 +303,10 @@ carrusel_html = f"""
             return 'other';
         }}
 
-        function buildPageGroup(pageItems) {{
-            // Construye el HTML interior de una página (colección de tarjetas)
+        function renderPageGroup(pageItems) {{
             let html = '';
             pageItems.forEach(item => {{
-                const progressPercent = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
+                const pct = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
                 const over = item.recibido > item.esperado;
                 html += `
                 <div class="vdr-card">
@@ -277,98 +317,96 @@ carrusel_html = f"""
                     <div class="odc-row">
                         <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:10px;">Tipo: ${{item.tipo_odc}}</span>
                     </div>
-                    <div class="producto" title="${{item.producto}}">${{item.producto.length > 45 ? item.producto.substring(0,45)+'...' : item.producto}}</div>
+                    <div class="producto" title="${{item.producto}}">${{item.producto.length > 50 ? item.producto.substring(0,50)+'...' : item.producto}}</div>
                     <div class="proveedor-row">
                         <span>🏭 Proveedor:</span> ${{item.proveedor}}
                     </div>
                     <div class="progress-container">
                         <div class="progress-bar-wrapper">
-                            <div class="progress-fill${{over ? ' over' : ''}}" style="width: ${{progressPercent}}%;"></div>
+                            <div class="progress-fill${{over ? ' over' : ''}}" style="width: ${{pct}}%;"></div>
                         </div>
-                        <div class="progress-text">${{item.recibido}} / ${{item.esperado}} (${{progressPercent}}%)</div>
+                        <div class="progress-text">${{item.recibido}} / ${{item.esperado}} (${{pct}}%)</div>
                     </div>
                 </div>`;
             }});
             return html;
         }}
 
-        function createTrack() {{
+        function buildCarousel() {{
             if (totalPages === 0) {{
                 viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles.</div>';
-                prevBtn.style.display = 'none';
-                nextBtn.style.display = 'none';
+                prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
                 return;
             }}
             if (totalPages === 1) {{
-                const group = document.createElement('div');
-                group.className = 'page-group active';
-                group.style.top = '20px';
-                group.innerHTML = buildPageGroup(pages[0]);
-                track.innerHTML = '';
-                track.appendChild(group);
-                prevBtn.style.visibility = 'hidden';
-                nextBtn.style.visibility = 'hidden';
-                pageIndicator.textContent = `Página 1 de 1`;
+                track.innerHTML = `<div class="page-group active" style="top:20px;">${{renderPageGroup(pages[0])}}</div>`;
+                prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden';
                 return;
             }}
 
-            // Para loop infinito: clonar la última y primera página
-            const lastClone = {{...pages[totalPages-1]}};
-            const firstClone = {{...pages[0]}};
-            const allPages = [lastClone, ...pages, firstClone];
+            // Clones para loop infinito
+            const cloneLast = pages[totalPages-1];
+            const cloneFirst = pages[0];
+            const allPages = [cloneLast, ...pages, cloneFirst];
 
             track.innerHTML = '';
             allPages.forEach((page, idx) => {{
                 const group = document.createElement('div');
-                group.className = 'page-group';
-                if (idx === 1) group.classList.add('active');
-                group.style.top = `${{(idx - 1) * PAGE_HEIGHT + 10}}px`;
-                group.innerHTML = buildPageGroup(page);
+                group.className = 'page-group' + (idx === 1 ? ' active' : '');
+                group.style.top = (idx * PAGE_HEIGHT) + 'px';
+                group.innerHTML = renderPageGroup(page);
                 track.appendChild(group);
             }});
 
-            currentPageIndex = 0;
-            track.style.transform = 'translateY(0px)';
-            pageIndicator.textContent = `Página 1 de ${{totalPages}}`;
+            currentPage = 0;
+            track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
+            renderDots(currentPage);
         }}
 
-        function updatePageIndicator() {{
-            pageIndicator.textContent = `Página ${{currentPageIndex+1}} de ${{totalPages}}`;
-            announcer.textContent = `Mostrando página ${{currentPageIndex+1}} de ${{totalPages}}`;
+        function renderDots(activeIdx) {{
+            dotsContainer.innerHTML = '';
+            for (let i = 0; i < totalPages; i++) {{
+                const dot = document.createElement('div');
+                dot.className = 'dot' + (i === activeIdx ? ' active-dot' : '');
+                dot.onclick = () => goToPage(i);
+                dotsContainer.appendChild(dot);
+            }}
         }}
 
         function goToPage(index) {{
             if (totalPages <= 1) return;
-            currentPageIndex = index;
-            const offset = - (index + 1) * PAGE_HEIGHT;
+            currentPage = index;
+            const offset = -(index + 1) * PAGE_HEIGHT;
             track.style.transition = 'transform 0.4s ease-in-out';
             track.style.transform = `translateY(${{offset}}px)`;
-            updatePageIndicator();
-            // Actualizar clase active
+            updateActivePage();
+            renderDots(index);
+            announcer.textContent = `Página ${{index+1}} de ${{totalPages}}`;
+        }}
+
+        function updateActivePage() {{
             const groups = track.querySelectorAll('.page-group');
-            groups.forEach(g => g.classList.remove('active'));
-            if (groups.length > index + 1) groups[index + 1].classList.add('active');
+            groups.forEach((g, i) => {{
+                g.classList.remove('active');
+                if (i === currentPage + 1) g.classList.add('active');
+            }});
         }}
 
         function handleTransitionEnd() {{
-            if (currentPageIndex === totalPages) {{ // más allá de la última
+            if (currentPage >= totalPages) {{
                 track.style.transition = 'none';
-                track.style.transform = `translateY(${{- (0 + 1) * PAGE_HEIGHT}}px)`;
-                currentPageIndex = 0;
-                updatePageIndicator();
-                track.querySelectorAll('.page-group').forEach(g => g.classList.remove('active'));
-                const groups = track.querySelectorAll('.page-group');
-                if (groups.length > 1) groups[1].classList.add('active');
+                track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
+                currentPage = 0;
+                updateActivePage();
+                renderDots(0);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
-            }} else if (currentPageIndex === -1) {{
+            }} else if (currentPage < 0) {{
                 track.style.transition = 'none';
-                track.style.transform = `translateY(${{- (totalPages-1 + 1) * PAGE_HEIGHT}}px)`;
-                currentPageIndex = totalPages - 1;
-                updatePageIndicator();
-                track.querySelectorAll('.page-group').forEach(g => g.classList.remove('active'));
-                const groups = track.querySelectorAll('.page-group');
-                if (groups.length > totalPages) groups[totalPages].classList.add('active');
+                track.style.transform = `translateY(${{-totalPages * PAGE_HEIGHT}}px)`;
+                currentPage = totalPages - 1;
+                updateActivePage();
+                renderDots(totalPages-1);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
             }}
@@ -376,60 +414,47 @@ carrusel_html = f"""
 
         function next() {{
             if (totalPages <= 1) return;
-            currentPageIndex++;
-            if (currentPageIndex >= totalPages) currentPageIndex = totalPages;
-            goToPage(currentPageIndex);
+            currentPage++;
+            if (currentPage >= totalPages) currentPage = totalPages;
+            goToPage(currentPage);
         }}
 
         function prev() {{
             if (totalPages <= 1) return;
-            currentPageIndex--;
-            if (currentPageIndex < 0) currentPageIndex = -1;
-            goToPage(currentPageIndex);
+            currentPage--;
+            if (currentPage < 0) currentPage = -1;
+            goToPage(currentPage);
         }}
 
-        function startAutoPlay() {{
-            stopAutoPlay();
-            if (totalPages > 1) autoPlayTimer = setInterval(next, 10000);
+        function startAuto() {{
+            stopAuto();
+            if (totalPages > 1) autoTimer = setInterval(next, 10000);
         }}
+        function stopAuto() {{ if (autoTimer) clearInterval(autoTimer); }}
 
-        function stopAutoPlay() {{
-            if (autoPlayTimer) clearInterval(autoPlayTimer);
-        }}
+        prevBtn.onclick = () => {{ prev(); stopAuto(); startAuto(); }};
+        nextBtn.onclick = () => {{ next(); stopAuto(); startAuto(); }};
 
-        prevBtn.addEventListener('click', () => {{ prev(); stopAutoPlay(); startAutoPlay(); }});
-        nextBtn.addEventListener('click', () => {{ next(); stopAutoPlay(); startAutoPlay(); }});
+        viewport.addEventListener('mouseenter', stopAuto);
+        viewport.addEventListener('mouseleave', () => {{ if (!paused) startAuto(); }});
 
-        viewport.addEventListener('mouseenter', stopAutoPlay);
-        viewport.addEventListener('mouseleave', () => {{ if (!isPaused) startAutoPlay(); }});
-
-        let touchStartY = 0;
-        viewport.addEventListener('touchstart', e => {{
-            touchStartY = e.touches[0].clientY;
-            stopAutoPlay();
-        }});
+        let touchY = 0;
+        viewport.addEventListener('touchstart', e => {{ touchY = e.touches[0].clientY; stopAuto(); }});
         viewport.addEventListener('touchend', e => {{
-            if (!touchStartY) return;
-            const diff = touchStartY - e.changedTouches[0].clientY;
-            if (Math.abs(diff) > 40) {{
-                if (diff > 0) next();
-                else prev();
-            }}
-            startAutoPlay();
-            touchStartY = 0;
+            const diff = touchY - e.changedTouches[0].clientY;
+            if (Math.abs(diff) > 40) {{ diff > 0 ? next() : prev(); }}
+            startAuto();
         }});
 
         window.addEventListener('keydown', e => {{
-            if (e.key === 'ArrowDown') {{ e.preventDefault(); next(); stopAutoPlay(); startAutoPlay(); }}
-            else if (e.key === 'ArrowUp') {{ e.preventDefault(); prev(); stopAutoPlay(); startAutoPlay(); }}
+            if (e.key === 'ArrowDown') {{ e.preventDefault(); next(); stopAuto(); startAuto(); }}
+            else if (e.key === 'ArrowUp') {{ e.preventDefault(); prev(); stopAuto(); startAuto(); }}
         }});
 
         track.addEventListener('transitionend', handleTransitionEnd);
 
-        createTrack();
-        startAutoPlay();
-
-        window.addEventListener('beforeunload', stopAutoPlay);
+        buildCarousel();
+        startAuto();
     </script>
 </body>
 </html>
@@ -439,13 +464,13 @@ carrusel_html = f"""
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 st.title("📦 Monitor de Recepciones (VDR) – Vista Paginada")
-st.markdown("Cada página muestra hasta 10 recepciones. Navegue verticalmente entre páginas.")
+st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=780, scrolling=False)
+components.html(carrusel_html, height=820, scrolling=False)
 
-# Panel lateral
+# Panel lateral informativo
 with st.sidebar:
     st.header("ℹ️ Información")
-    st.write(f"Total de registros: {total_items}")
-    st.write(f"Tamaño de página: {PAGE_SIZE} (total páginas: {total_pages})")
-    st.write("Datos de muestra. En producción se cargaría el Excel del repositorio GitHub.")
+    st.metric("Registros cargados", total)
+    st.metric("Tamaño de página", PAGE_SIZE)
+    st.metric("Total páginas", total_pages)
