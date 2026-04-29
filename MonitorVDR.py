@@ -17,7 +17,7 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 @st.cache_data(show_spinner=False)
 def load_data():
     # URL real del archivo Excel en GitHub (ajustar según corresponda)
-    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto.xlsx"
+    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto%2B29-04-2026_29-04-2026.xlsx"
     try:
         res = requests.get(url)
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1")
