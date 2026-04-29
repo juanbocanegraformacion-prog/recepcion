@@ -1,10 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import math
 import json
-import requests
-import io
+import os
 
 # ------------------------------------------------------------
 # CONFIGURACIÓN DE PÁGINA
@@ -12,465 +10,178 @@ import io
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL O DATOS DE EJEMPLO
+# CARGA Y PROCESAMIENTO DE DATOS
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def load_data():
-    # URL real del archivo Excel en GitHub (ajustar según corresponda)
+@st.cache_data(ttl=600) # Caché de 10 minutos
+def load_data_from_github():
+    # URL RAW corregida (sustituyendo /blob/ por /raw/ y quitando el '+' si es necesario)
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto%2B29-04-2026_29-04-2026.xlsx"
+    
+    # Nota: Si el archivo en GitHub termina en .xlsx pero es un CSV, usamos read_csv.
+    # Si es un Excel real, usamos read_excel. Según tus errores previos, es un CSV con encoding latin-1.
     try:
-        res = requests.get(url)
-        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1")
-        # Seleccionar las columnas necesarias (ajustar nombres según encabezado real)
-        cols_map = {
-            'Sucursal': 'sucursal',
-            'N° Doc.Compra (VDR)': 'vdr',
-            'Estatus compra (VDR)': 'estatus',
-            'Número de orden de compra': 'odc',
-            'Tipo ODC': 'tipo_odc',
-            'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',  # columna AA
-            'Empaques Esperados': 'esperado',
-            'Empaques Recibidos': 'recibido'
-        }
-        df = df.rename(columns=cols_map)[list(cols_map.values())]
+        # Intentamos leer como CSV (basado en tus interacciones previas)
+        df = pd.read_csv(url, skiprows=1, encoding='latin-1', on_bad_lines='skip', engine='python')
+        
+        # Mapeo según tus especificaciones de columnas (A=0, B=1, G=6...)
+        df_vdr = pd.DataFrame({
+            "sucursal": df.iloc[:, 0],    # Columna A
+            "vdr": df.iloc[:, 1],         # Columna B
+            "estatus": df.iloc[:, 6],     # Columna G
+            "odc": df.iloc[:, 7],         # Columna H
+            "tipo_odc": df.iloc[:, 8],    # Columna I
+            "producto": df.iloc[:, 16],   # Columna Q
+            "proveedor": df.iloc[:, 26],  # Columna AA
+            "esperado": pd.to_numeric(df.iloc[:, 29], errors='coerce').fillna(0), # Columna AD
+            "recibido": pd.to_numeric(df.iloc[:, 31], errors='coerce').fillna(0)  # Columna AF
+        })
+        return df_vdr.dropna(subset=['vdr']) # Limpiar filas vacías
     except Exception as e:
-        # Datos de ejemplo si falla la carga
-        st.warning(f"No se pudo cargar el archivo Excel ({e}). Usando datos de ejemplo.")
-        sample_data = [
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO FRAGANCIA CITRICA LAS LLAVES 900 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 50, 50],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO LIMPIEZA ACTIVA FLORAL LAS LLAVES 400 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 36, 32],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 900GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 10, 10],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
-             "CERVEZA POLAR LIGHT RET 222ML", "CERVECERIA POLAR, C.A.", 540, 540],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
-             "GAVERA DE CERVEZA POLAR", "CERVECERIA POLAR, C.A.", 15, 15],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO ZERO PEPSI 2L", "PEPSI-COLA VENEZUELA C.A.", 12, 12],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO SABOR PIÑA PET GOLDEN 2L", "PEPSI-COLA VENEZUELA C.A.", 30, 30],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO KOLITA GOLDEN 2 L", "PEPSI-COLA VENEZUELA C.A.", 54, 54],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO KOLITA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO DE PIÑA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014434", "En validación", "ODC-01-001-00015799", "Total",
-             "MORTADELA DE POLLO SUPERIOR HERMO 1 KG.", "INDUSTRIAS ALIMENTICIAS HERMO DE VENEZUELA S.A.", 20, 15],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014435", "Pendiente por validar", "ODC-01-005-00013785", "Parcial",
-             "PAÑAL ACTIVESEC DISNEY TALLA XG HUGGIES 25 UND", "DIMASSI, C.A.", 24, 8],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014436", "Anulada", "ODC-01-016-00016341", "Parcial",
-             "JAMON ESPALDA AHUMADA VISKING DELGADO ALIMEX 1.6 KG", "PRODUCTOS ALIMEX, C.A.", 21, 0],
-        ]
-        df = pd.DataFrame(sample_data, columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
-    # Asegurar tipos numéricos
-    df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
-    df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
-    return df
+        st.error(f"Error al conectar con GitHub: {e}")
+        # Retorno de datos de respaldo en caso de error de conexión
+        return pd.DataFrame([
+            {"sucursal": "Sede Central", "vdr": "VDR-001", "estatus": "Integrada", "odc": "ODC-100", "tipo_odc": "Total", "producto": "PRODUCTO DE PRUEBA", "proveedor": "PROVEEDOR S.A", "esperado": 100, "recibido": 80}
+        ])
 
-df = load_data()
-registros = df.to_dict(orient="records")
+df_raw = load_data_from_github()
 
 # ------------------------------------------------------------
-# PAGINACIÓN (10 registros por página)
+# LOGICA DE PAGINACIÓN (10 en 10)
 # ------------------------------------------------------------
-PAGE_SIZE = 10
-total = len(registros)
-total_pages = max(1, math.ceil(total / PAGE_SIZE))
-pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
+items_per_page = 10
+total_pages = max(1, len(df_raw) // items_per_page + (1 if len(df_raw) % items_per_page > 0 else 0))
+
+with st.sidebar:
+    st.header("📊 Control de Monitor")
+    page = st.number_input("Página", min_value=1, max_value=total_pages, value=1)
+    st.divider()
+    st.info("El monitor muestra la recepción previa, la actual (centro) y la siguiente.")
+
+# Filtrar datos de la página actual
+start_idx = (page - 1) * items_per_page
+df_page = df_raw.iloc[start_idx : start_idx + items_per_page]
+vdr_json = df_page.to_dict(orient="records")
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO
+# DISEÑO DEL CARRUSEL (HTML/JS/CSS)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        :root {{
-            --color-green: #2E7D32;
-            --color-orange: #F57C00;
-            --color-red: #D32F2F;
-            --color-gray: #757575;
-            --color-blue: #1976D2;
-            --card-bg: #FFFFFF;
-            --card-border-radius: 12px;
-            --shadow: 0 4px 12px rgba(0,0,0,0.1);
-            --shadow-active: 0 0 20px rgba(46,125,50,0.4);
-            --transition-speed: 0.4s;
-            --font-stack: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            --mono-font: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        body {{ 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: #f0f2f6; 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            overflow: hidden; 
         }}
-        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{
-            font-family: var(--font-stack);
-            background: #f0f4f8;
+        .monitor-container {{
             display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            width: 100%;
             justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }}
-        .carousel-wrapper {{
-            position: relative;
-            width: 100%;
-            max-width: 700px;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }}
-        .carousel-viewport {{
-            width: 100%;
-            height: 780px;  /* altura amplia para 10 tarjetas */
-            overflow: hidden;
-            position: relative;
-            border-radius: var(--card-border-radius);
-        }}
-        .carousel-track {{
-            position: relative;
-            width: 100%;
-            height: 100%;
-            transition: transform var(--transition-speed) ease-in-out;
-            will-change: transform;
-        }}
-        .page-group {{
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 95%;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            align-items: stretch;
-            padding: 10px;
-            background: rgba(255,255,255,0.85);
-            border-radius: var(--card-border-radius);
-            box-shadow: var(--shadow);
-            opacity: 0.7;
-            filter: brightness(0.95);
-        }}
-        .page-group.active {{
-            box-shadow: var(--shadow-active);
-            border: 2px solid var(--color-green);
-            opacity: 1;
-            filter: brightness(1);
-            z-index: 2;
         }}
         .vdr-card {{
-            background: var(--card-bg);
-            border-radius: var(--card-border-radius);
-            box-shadow: var(--shadow);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            width: 600px;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 10px 0;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            opacity: 0.4;
+            transform: scale(0.85);
+            border-left: 5px solid #ccc;
         }}
-        .card-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .active {{
+            opacity: 1;
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            border-left: 15px solid #2E7D32;
+            z-index: 10;
         }}
-        .sucursal-vdr {{
-            font-weight: 700;
-            color: #1a1a1a;
+        .header-row {{ display: flex; justify-content: space-between; font-size: 12px; color: #666; font-weight: bold; }}
+        .status-tag {{ 
+            padding: 4px 10px; border-radius: 15px; font-size: 11px; 
+            background: #e8f5e9; color: #2e7d32; text-transform: uppercase;
         }}
-        .status-badge {{
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: white;
+        .prod-name {{ font-size: 18px; font-weight: bold; margin: 10px 0; color: #1a1a1a; }}
+        .data-grid {{ 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; 
+            font-size: 13px; color: #444; border-top: 1px solid #eee; padding-top: 10px;
         }}
-        .status-badge.integrada {{ background: var(--color-green); }}
-        .status-badge.en-validacion {{ background: var(--color-orange); }}
-        .status-badge.pendiente-por-validar {{ background: var(--color-red); }}
-        .status-badge.anulada {{ background: var(--color-gray); }}
-        .status-badge.other {{ background: var(--color-gray); }}
-        .producto {{ font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-        .odc-row, .proveedor-row {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #555; }}
-        .progress-container {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 4px;
-        }}
-        .progress-bar-wrapper {{
-            flex: 1;
-            height: 6px;
-            background: #e0e0e0;
-            border-radius: 3px;
-            overflow: hidden;
-        }}
-        .progress-fill {{
-            height: 100%;
-            background: var(--color-green);
-            transition: width 0.3s;
-            border-radius: 3px;
-        }}
-        .progress-fill.over {{ background: var(--color-blue); }}
-        .progress-text {{
-            font-family: var(--mono-font);
-            font-size: 0.8rem;
-            color: #333;
-            white-space: nowrap;
-        }}
-        .nav-controls {{
-            display: flex;
-            gap: 12px;
-            margin: 15px 0;
-            align-items: center;
-        }}
-        .nav-btn {{
-            background: #e0e0e0;
-            border: none;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            font-size: 1.2rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }}
-        .nav-btn:hover {{ background: var(--color-green); color: white; }}
-        .dots {{
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-        }}
-        .dot {{
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #bbb;
-            cursor: pointer;
-            transition: background 0.2s;
-        }}
-        .dot.active-dot {{
-            background: var(--color-green);
-            transform: scale(1.2);
-        }}
-        .empty-state {{
-            text-align: center;
-            padding: 60px 20px;
-            color: #666;
-            font-size: 1.1rem;
-        }}
+        .progress-container {{ background: #eee; height: 12px; border-radius: 6px; margin-top: 15px; overflow: hidden; }}
+        .progress-bar {{ background: #2E7D32; height: 100%; transition: width 0.8s ease; }}
     </style>
 </head>
 <body>
-    <div class="carousel-wrapper" role="region" aria-label="Carrusel vertical de recepciones por página">
-        <button class="nav-btn prev" id="prevBtn" title="Página anterior">▲</button>
-        <div class="carousel-viewport" id="viewport">
-            <div class="carousel-track" id="track"></div>
-        </div>
-        <button class="nav-btn next" id="nextBtn" title="Página siguiente">▼</button>
-        <div class="dots" id="dots"></div>
-        <div aria-live="polite" id="announce" style="position:absolute;left:-9999px"></div>
-    </div>
+    <div class="monitor-container" id="monitor"></div>
 
     <script>
-        const pages = {json.dumps(pages)};
-        const totalPages = pages.length;
-        const PAGE_HEIGHT = 760;  // altura estimada de cada grupo de página
+        const data = {json.dumps(vdr_json)};
+        let currentIndex = 0;
 
-        const track = document.getElementById('track');
-        const viewport = document.getElementById('viewport');
-        const prevBtn = document.getElementById('prevBtn');
-        const nextBtn = document.getElementById('nextBtn');
-        const dotsContainer = document.getElementById('dots');
-        const announcer = document.getElementById('announce');
+        function render() {{
+            const container = document.getElementById('monitor');
+            container.innerHTML = '';
 
-        let currentPage = 0;
-        let autoTimer = null;
-        let paused = false;
-
-        function getStatusClass(estatus) {{
-            const n = estatus.trim().toLowerCase().replace(/\\s+/g, '-');
-            if (n === 'integrada') return 'integrada';
-            if (n.includes('en-validacion')) return 'en-validacion';
-            if (n.includes('pendiente-por-validar')) return 'pendiente-por-validar';
-            if (n === 'anulada') return 'anulada';
-            return 'other';
-        }}
-
-        function renderPageGroup(pageItems) {{
-            let html = '';
-            pageItems.forEach(item => {{
-                const pct = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
-                const over = item.recibido > item.esperado;
-                html += `
-                <div class="vdr-card">
-                    <div class="card-header">
-                        <span class="sucursal-vdr">${{item.sucursal}} · ${{item.vdr}}</span>
-                        <span class="status-badge ${{getStatusClass(item.estatus)}}">${{item.estatus}}</span>
-                    </div>
-                    <div class="odc-row">
-                        <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:10px;">Tipo: ${{item.tipo_odc}}</span>
-                    </div>
-                    <div class="producto" title="${{item.producto}}">${{item.producto.length > 50 ? item.producto.substring(0,50)+'...' : item.producto}}</div>
-                    <div class="proveedor-row">
-                        <span>🏭 Proveedor:</span> ${{item.proveedor}}
-                    </div>
-                    <div class="progress-container">
-                        <div class="progress-bar-wrapper">
-                            <div class="progress-fill${{over ? ' over' : ''}}" style="width: ${{pct}}%;"></div>
+            // Mostrar 3 tarjetas: anterior, actual, siguiente
+            [-1, 0, 1].forEach(offset => {{
+                const idx = currentIndex + offset;
+                if (idx >= 0 && idx < data.length) {{
+                    const item = data[idx];
+                    const percent = Math.min(100, (item.recibido / (item.esperado || 1)) * 100);
+                    
+                    const card = document.createElement('div');
+                    card.className = `vdr-card ${{offset === 0 ? 'active' : ''}}`;
+                    card.innerHTML = `
+                        <div class="header-row">
+                            <span>${{item.sucursal}}</span>
+                            <span class="status-tag">${{item.estatus}}</span>
                         </div>
-                        <div class="progress-text">${{item.recibido}} / ${{item.esperado}} (${{pct}}%)</div>
-                    </div>
-                </div>`;
-            }});
-            return html;
-        }}
-
-        function buildCarousel() {{
-            if (totalPages === 0) {{
-                viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles.</div>';
-                prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
-                return;
-            }}
-            if (totalPages === 1) {{
-                track.innerHTML = `<div class="page-group active" style="top:20px;">${{renderPageGroup(pages[0])}}</div>`;
-                prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden';
-                return;
-            }}
-
-            // Clones para loop infinito
-            const cloneLast = pages[totalPages-1];
-            const cloneFirst = pages[0];
-            const allPages = [cloneLast, ...pages, cloneFirst];
-
-            track.innerHTML = '';
-            allPages.forEach((page, idx) => {{
-                const group = document.createElement('div');
-                group.className = 'page-group' + (idx === 1 ? ' active' : '');
-                group.style.top = (idx * PAGE_HEIGHT) + 'px';
-                group.innerHTML = renderPageGroup(page);
-                track.appendChild(group);
-            }});
-
-            currentPage = 0;
-            track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
-            renderDots(currentPage);
-        }}
-
-        function renderDots(activeIdx) {{
-            dotsContainer.innerHTML = '';
-            for (let i = 0; i < totalPages; i++) {{
-                const dot = document.createElement('div');
-                dot.className = 'dot' + (i === activeIdx ? ' active-dot' : '');
-                dot.onclick = () => goToPage(i);
-                dotsContainer.appendChild(dot);
-            }}
-        }}
-
-        function goToPage(index) {{
-            if (totalPages <= 1) return;
-            currentPage = index;
-            const offset = -(index + 1) * PAGE_HEIGHT;
-            track.style.transition = 'transform 0.4s ease-in-out';
-            track.style.transform = `translateY(${{offset}}px)`;
-            updateActivePage();
-            renderDots(index);
-            announcer.textContent = `Página ${{index+1}} de ${{totalPages}}`;
-        }}
-
-        function updateActivePage() {{
-            const groups = track.querySelectorAll('.page-group');
-            groups.forEach((g, i) => {{
-                g.classList.remove('active');
-                if (i === currentPage + 1) g.classList.add('active');
+                        <div class="prod-name">${{item.producto}}</div>
+                        <div class="data-grid">
+                            <div><b>VDR:</b> ${{item.vdr}}</div>
+                            <div><b>ODC:</b> ${{item.odc}} (${{item.tipo_odc}})</div>
+                            <div><b>PROVEEDOR:</b> ${{item.proveedor}}</div>
+                            <div><b>CANTIDADES:</b> ${{item.recibido}} / ${{item.esperado}}</div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: ${{percent}}%"></div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                }}
             }});
         }}
 
-        function handleTransitionEnd() {{
-            if (currentPage >= totalPages) {{
-                track.style.transition = 'none';
-                track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
-                currentPage = 0;
-                updateActivePage();
-                renderDots(0);
-                track.offsetHeight;
-                track.style.transition = 'transform 0.4s ease-in-out';
-            }} else if (currentPage < 0) {{
-                track.style.transition = 'none';
-                track.style.transform = `translateY(${{-totalPages * PAGE_HEIGHT}}px)`;
-                currentPage = totalPages - 1;
-                updateActivePage();
-                renderDots(totalPages-1);
-                track.offsetHeight;
-                track.style.transition = 'transform 0.4s ease-in-out';
-            }}
-        }}
+        // Control por teclado
+        window.onkeydown = (e) => {{
+            if (e.key === "ArrowDown" && currentIndex < data.length - 1) currentIndex++;
+            if (e.key === "ArrowUp" && currentIndex > 0) currentIndex--;
+            render();
+        }};
 
-        function next() {{
-            if (totalPages <= 1) return;
-            currentPage++;
-            if (currentPage >= totalPages) currentPage = totalPages;
-            goToPage(currentPage);
-        }}
-
-        function prev() {{
-            if (totalPages <= 1) return;
-            currentPage--;
-            if (currentPage < 0) currentPage = -1;
-            goToPage(currentPage);
-        }}
-
-        function startAuto() {{
-            stopAuto();
-            if (totalPages > 1) autoTimer = setInterval(next, 10000);
-        }}
-        function stopAuto() {{ if (autoTimer) clearInterval(autoTimer); }}
-
-        prevBtn.onclick = () => {{ prev(); stopAuto(); startAuto(); }};
-        nextBtn.onclick = () => {{ next(); stopAuto(); startAuto(); }};
-
-        viewport.addEventListener('mouseenter', stopAuto);
-        viewport.addEventListener('mouseleave', () => {{ if (!paused) startAuto(); }});
-
-        let touchY = 0;
-        viewport.addEventListener('touchstart', e => {{ touchY = e.touches[0].clientY; stopAuto(); }});
-        viewport.addEventListener('touchend', e => {{
-            const diff = touchY - e.changedTouches[0].clientY;
-            if (Math.abs(diff) > 40) {{ diff > 0 ? next() : prev(); }}
-            startAuto();
-        }});
-
-        window.addEventListener('keydown', e => {{
-            if (e.key === 'ArrowDown') {{ e.preventDefault(); next(); stopAuto(); startAuto(); }}
-            else if (e.key === 'ArrowUp') {{ e.preventDefault(); prev(); stopAuto(); startAuto(); }}
-        }});
-
-        track.addEventListener('transitionend', handleTransitionEnd);
-
-        buildCarousel();
-        startAuto();
+        render();
     </script>
 </body>
 </html>
 """
 
-# ------------------------------------------------------------
-# INTERFAZ STREAMLIT
-# ------------------------------------------------------------
-st.title("📦 Monitor de Recepciones (VDR) – Vista Paginada")
-st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
+# Renderizar Monitor
+st.title("📦 Monitor de Recepciones Logísticas")
+components.html(carrusel_html, height=700)
 
-components.html(carrusel_html, height=820, scrolling=False)
-
-# Panel lateral informativo
-with st.sidebar:
-    st.header("ℹ️ Información")
-    st.metric("Registros cargados", total)
-    st.metric("Tamaño de página", PAGE_SIZE)
-    st.metric("Total páginas", total_pages)
+# Sugerencias adicionales de visualización
+with st.expander("💡 Sugerencias de visualización para estos datos"):
+    st.markdown("""
+    1. **Alertas de Diferencia:** Podríamos resaltar en rojo las tarjetas donde la `cantidad recibida` sea menor al 90% de la `esperada`.
+    2. **Filtro por Estatus:** Añadir un multiselect en el sidebar para ver solo las "Pendientes" o "En Validación".
+    3. **Auto-Scroll:** Implementar un temporizador (ej. cada 10 segundos) para que el monitor avance solo sin intervención del usuario.
+    4. **KPIs de Página:** Mostrar el total de unidades esperadas vs recibidas de los 10 productos en pantalla.
+    """)
