@@ -13,7 +13,7 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 @st.cache_data
 def load_data():
     # Nombre exacto del archivo que está junto al script
-    file_path = "Reporte-Consolidado-Compras-Producto.xlsx - Sheet1.csv"
+    file_path = "Reporte-Consolidado-Compras-Producto.xlsx"
     
     if not os.path.exists(file_path):
         st.error(f"No se encontró el archivo: {file_path}")
