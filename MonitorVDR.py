@@ -16,14 +16,10 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def load_data():
-    # URL real del archivo Excel en GitHub (ajustar si cambia)
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto%2B29-04-2026_29-04-2026.xlsx"
     try:
         res = requests.get(url)
-        # Leer desde la segunda fila como cabecera (header=1)
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
-        
-        # Mapeo correcto de nombres de columna (respetando acentos y espacios)
         cols_map = {
             'Sucursal': 'sucursal',
             'N° Doc.Compra (VDR)': 'vdr',
@@ -31,14 +27,12 @@ def load_data():
             'Número de orden de compra': 'odc',
             'Tipo ODC': 'tipo_odc',
             'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',   # columna AA
+            'Proveedor de transacción': 'proveedor',
             'Empaques Esperados': 'esperado',
             'Empaques Recibidos': 'recibido'
         }
-        # Seleccionar y renombrar las columnas que nos interesan
         df = df[list(cols_map.keys())].rename(columns=cols_map)
     except Exception as e:
-        # Datos de ejemplo si falla la carga (incluyen todos los campos nuevos)
         st.warning(f"No se pudo cargar el archivo Excel ({e}). Usando datos de ejemplo.")
         sample_data = [
             ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
@@ -69,8 +63,6 @@ def load_data():
              "JAMON ESPALDA AHUMADA VISKING DELGADO ALIMEX 1.6 KG", "PRODUCTOS ALIMEX, C.A.", 21, 0],
         ]
         df = pd.DataFrame(sample_data, columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
-    
-    # Asegurar tipos numéricos
     df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
@@ -471,9 +463,24 @@ st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, tec
 
 components.html(carrusel_html, height=820, scrolling=False)
 
-# Panel lateral informativo
+# ------------------------------------------------------------
+# PANEL LATERAL CON CONTEO DE ESTATUS
+# ------------------------------------------------------------
 with st.sidebar:
     st.header("ℹ️ Información")
     st.metric("Registros cargados", total)
-    st.metric("Tamaño de página", PAGE_SIZE)
-    st.metric("Total páginas", total_pages)
+
+    # Contar registros por estatus
+    status_counts = df['estatus'].value_counts()
+    st.markdown("**Distribución por estatus:**")
+    num_status = len(status_counts)
+    cols_per_row = 2
+    rows = math.ceil(num_status / cols_per_row)
+    for r in range(rows):
+        cols = st.columns(cols_per_row)
+        for c in range(cols_per_row):
+            idx = r * cols_per_row + c
+            if idx < num_status:
+                status = status_counts.index[idx]
+                count = status_counts.iloc[idx]
+                cols[c].metric(label=status, value=count)
