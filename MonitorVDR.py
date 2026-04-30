@@ -489,8 +489,9 @@ components.html(carrusel_html, height=780, scrolling=False)
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("ℹ️ Información")
-    st.metric("Registros cargados (productos)", total)
-
+    #st.metric("Registros cargados (productos)", total)
+    total_vdr = df['vdr'].nunique()
+    st.metric("VDR únicas cargadas", total_vdr)
     # Contar VDR únicas por estatus, no productos
     status_counts = df[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
     st.markdown("**Distribución por estatus (VDR únicas):**")
