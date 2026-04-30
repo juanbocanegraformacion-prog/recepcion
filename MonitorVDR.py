@@ -79,7 +79,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO (10 tarjetas visibles)
+# HTML/CSS/JS DEL CARRUSEL PAGINADO (10 tarjetas, productos completos, texto en negrita)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -115,7 +115,7 @@ carrusel_html = f"""
         .carousel-wrapper {{
             position: relative;
             width: 100%;
-            max-width: 800px;  /* se adapta al ancho de la columna de Streamlit */
+            max-width: 800px;  /* adaptable al ancho de Streamlit */
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -123,7 +123,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 720px;          /* altura suficiente para 10 tarjetas compactas */
+            height: 900px;          /* altura aumentada para mostrar 10 tarjetas con texto completo */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -158,6 +158,7 @@ carrusel_html = f"""
             filter: brightness(1);
             z-index: 2;
         }}
+        /* Toda la información de las tarjetas en negrita */
         .vdr-card {{
             background: var(--card-bg);
             border-radius: var(--card-border-radius);
@@ -167,6 +168,7 @@ carrusel_html = f"""
             flex-direction: column;
             gap: 3px;
             font-size: 0.8rem;
+            font-weight: bold; /* Aplica negrita a todo el contenido de la tarjeta */
         }}
         .card-header {{
             display: flex;
@@ -199,9 +201,9 @@ carrusel_html = f"""
         .producto {{
             font-size: 0.78rem;
             font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            /* Texto completo, ahora puede envolver varias líneas */
+            white-space: normal;
+            overflow: visible;
         }}
         .odc-row, .proveedor-row {{
             display: flex;
@@ -209,9 +211,9 @@ carrusel_html = f"""
             gap: 4px;
             font-size: 0.68rem;
             color: #555;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            /* También visible sin recortes */
+            white-space: normal;
+            overflow: visible;
         }}
         .progress-container {{
             display: flex;
@@ -237,6 +239,7 @@ carrusel_html = f"""
             font-family: var(--mono-font);
             font-size: 0.7rem;
             color: #333;
+            font-weight: bold;
             white-space: nowrap;
         }}
         .nav-controls {{
@@ -281,6 +284,7 @@ carrusel_html = f"""
             padding: 60px 20px;
             color: #666;
             font-size: 1.1rem;
+            font-weight: bold;
         }}
     </style>
 </head>
@@ -298,7 +302,7 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 720;   /* igual a la altura del viewport */
+        const PAGE_HEIGHT = 900;   /* igual a la altura del viewport */
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -325,6 +329,7 @@ carrusel_html = f"""
             pageItems.forEach(item => {{
                 const pct = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
                 const over = item.recibido > item.esperado;
+                // Se muestra el nombre completo del producto, sin truncar
                 html += `
                 <div class="vdr-card">
                     <div class="card-header">
@@ -334,7 +339,7 @@ carrusel_html = f"""
                     <div class="odc-row">
                         <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:8px;">Tipo: ${{item.tipo_odc}}</span>
                     </div>
-                    <div class="producto" title="${{item.producto}}">${{item.producto.length > 50 ? item.producto.substring(0,50)+'...' : item.producto}}</div>
+                    <div class="producto" title="${{item.producto}}">${{item.producto}}</div>
                     <div class="proveedor-row">
                         <span>🏭 Proveedor:</span> ${{item.proveedor}}
                     </div>
@@ -482,17 +487,18 @@ carrusel_html = f"""
 st.title("📦 Monitor de Recepciones (VDR) – Vista Paginada")
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=780, scrolling=False)
+components.html(carrusel_html, height=960, scrolling=False)
 
 # ------------------------------------------------------------
 # PANEL LATERAL CON CONTEO DE ESTATUS (basado en VDR únicas)
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("ℹ️ Información")
-    #st.metric("Registros cargados (productos)", total)
+    
     total_vdr = df['vdr'].nunique()
     st.metric("VDR únicas cargadas", total_vdr)
-    # Contar VDR únicas por estatus, no productos
+    
+    # Contar VDR únicas por estatus
     status_counts = df[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
     st.markdown("**Distribución por estatus (VDR únicas):**")
     num_status = len(status_counts)
