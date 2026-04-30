@@ -79,7 +79,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO
+# HTML/CSS/JS DEL CARRUSEL PAGINADO (10 tarjetas visibles)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -95,9 +95,9 @@ carrusel_html = f"""
             --color-gray: #757575;
             --color-blue: #1976D2;
             --card-bg: #FFFFFF;
-            --card-border-radius: 12px;
-            --shadow: 0 4px 12px rgba(0,0,0,0.1);
-            --shadow-active: 0 0 20px rgba(46,125,50,0.4);
+            --card-border-radius: 8px;
+            --shadow: 0 2px 6px rgba(0,0,0,0.08);
+            --shadow-active: 0 0 16px rgba(46,125,50,0.4);
             --transition-speed: 0.4s;
             --font-stack: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             --mono-font: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
@@ -110,12 +110,12 @@ carrusel_html = f"""
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 10px;
         }}
         .carousel-wrapper {{
             position: relative;
             width: 100%;
-            max-width: 700px;
+            max-width: 800px;  /* se adapta al ancho de la columna de Streamlit */
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -123,7 +123,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 780px;
+            height: 720px;          /* altura suficiente para 10 tarjetas compactas */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -139,17 +139,17 @@ carrusel_html = f"""
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 95%;
+            width: 96%;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 6px;
             align-items: stretch;
-            padding: 10px;
+            padding: 8px;
             background: rgba(255,255,255,0.85);
             border-radius: var(--card-border-radius);
             box-shadow: var(--shadow);
-            opacity: 0.7;
-            filter: brightness(0.95);
+            opacity: 0.8;
+            filter: brightness(0.97);
         }}
         .page-group.active {{
             box-shadow: var(--shadow-active);
@@ -161,76 +161,97 @@ carrusel_html = f"""
         .vdr-card {{
             background: var(--card-bg);
             border-radius: var(--card-border-radius);
-            box-shadow: var(--shadow);
-            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 6px 10px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 3px;
+            font-size: 0.8rem;
         }}
         .card-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-size: 0.85rem;
         }}
         .sucursal-vdr {{
             font-weight: 700;
             color: #1a1a1a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
         .status-badge {{
             display: inline-block;
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-size: 0.75rem;
+            padding: 1px 8px;
+            border-radius: 12px;
+            font-size: 0.65rem;
             font-weight: 600;
             text-transform: uppercase;
             color: white;
+            white-space: nowrap;
         }}
         .status-badge.integrada {{ background: var(--color-green); }}
         .status-badge.en-validacion {{ background: var(--color-orange); }}
         .status-badge.pendiente-por-validar {{ background: var(--color-red); }}
         .status-badge.anulada {{ background: var(--color-gray); }}
         .status-badge.other {{ background: var(--color-gray); }}
-        .producto {{ font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-        .odc-row, .proveedor-row {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #555; }}
+        .producto {{
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .odc-row, .proveedor-row {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.68rem;
+            color: #555;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
         .progress-container {{
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-top: 4px;
+            gap: 8px;
+            margin-top: 2px;
         }}
         .progress-bar-wrapper {{
             flex: 1;
-            height: 6px;
+            height: 4px;
             background: #e0e0e0;
-            border-radius: 3px;
+            border-radius: 2px;
             overflow: hidden;
         }}
         .progress-fill {{
             height: 100%;
             background: var(--color-green);
             transition: width 0.3s;
-            border-radius: 3px;
+            border-radius: 2px;
         }}
         .progress-fill.over {{ background: var(--color-blue); }}
         .progress-text {{
             font-family: var(--mono-font);
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             color: #333;
             white-space: nowrap;
         }}
         .nav-controls {{
             display: flex;
             gap: 12px;
-            margin: 15px 0;
+            margin: 10px 0;
             align-items: center;
         }}
         .nav-btn {{
             background: #e0e0e0;
             border: none;
             border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            font-size: 1.2rem;
+            width: 32px;
+            height: 32px;
+            font-size: 1.1rem;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -240,12 +261,12 @@ carrusel_html = f"""
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
         .dots {{
             display: flex;
-            gap: 8px;
-            margin-top: 8px;
+            gap: 6px;
+            margin-top: 6px;
         }}
         .dot {{
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #bbb;
             cursor: pointer;
@@ -277,7 +298,7 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 760;
+        const PAGE_HEIGHT = 720;   /* igual a la altura del viewport */
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -291,7 +312,7 @@ carrusel_html = f"""
         let paused = false;
 
         function getStatusClass(estatus) {{
-            const n = estatus.trim().toLowerCase().replace(/\\s+/g, '-');
+            const n = estatus.trim().toLowerCase().replace(/\s+/g, '-');
             if (n === 'integrada') return 'integrada';
             if (n.includes('en-validacion')) return 'en-validacion';
             if (n.includes('pendiente-por-validar')) return 'pendiente-por-validar';
@@ -307,11 +328,11 @@ carrusel_html = f"""
                 html += `
                 <div class="vdr-card">
                     <div class="card-header">
-                        <span class="sucursal-vdr">${{item.sucursal}} · ${{item.vdr}}</span>
+                        <span class="sucursal-vdr" title="${{item.sucursal}} · ${{item.vdr}}">${{item.sucursal}} · ${{item.vdr}}</span>
                         <span class="status-badge ${{getStatusClass(item.estatus)}}">${{item.estatus}}</span>
                     </div>
                     <div class="odc-row">
-                        <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:10px;">Tipo: ${{item.tipo_odc}}</span>
+                        <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:8px;">Tipo: ${{item.tipo_odc}}</span>
                     </div>
                     <div class="producto" title="${{item.producto}}">${{item.producto.length > 50 ? item.producto.substring(0,50)+'...' : item.producto}}</div>
                     <div class="proveedor-row">
@@ -461,18 +482,18 @@ carrusel_html = f"""
 st.title("📦 Monitor de Recepciones (VDR) – Vista Paginada")
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=820, scrolling=False)
+components.html(carrusel_html, height=780, scrolling=False)
 
 # ------------------------------------------------------------
-# PANEL LATERAL CON CONTEO DE ESTATUS
+# PANEL LATERAL CON CONTEO DE ESTATUS (basado en VDR únicas)
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("ℹ️ Información")
-    st.metric("Registros cargados", total)
+    st.metric("Registros cargados (productos)", total)
 
-    # Contar registros por estatus
-    status_counts = df['estatus'].value_counts()
-    st.markdown("**Distribución por estatus:**")
+    # Contar VDR únicas por estatus, no productos
+    status_counts = df[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
+    st.markdown("**Distribución por estatus (VDR únicas):**")
     num_status = len(status_counts)
     cols_per_row = 2
     rows = math.ceil(num_status / cols_per_row)
