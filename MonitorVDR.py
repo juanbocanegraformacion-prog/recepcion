@@ -71,10 +71,12 @@ def load_data():
 df = load_data()
 
 # ------------------------------------------------------------
-# FILTRO POR SUCURSAL (sidebar)
+# FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("🔎 Filtros")
+    
+    # Filtro 1: Sucursal
     sucursales = df['sucursal'].unique().tolist()
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
@@ -82,16 +84,57 @@ with st.sidebar:
         index=0,
         help="Selecciona una sucursal para filtrar los datos, o 'Todas' para ver el consolidado."
     )
+    
+    # Aplicar filtro de sucursal para obtener opciones dinámicas del filtro de estatus
+    if sucursal_seleccionada == "Todas":
+        df_temp = df.copy()
+    else:
+        df_temp = df[df['sucursal'] == sucursal_seleccionada].copy()
+    
+    # Filtro 2: Estatus VDR (las opciones cambian según la sucursal seleccionada)
+    estatus_unicos = sorted(df_temp['estatus'].unique().tolist())
+    estatus_seleccionado = st.selectbox(
+        "Estatus VDR",
+        options=["Todas"] + estatus_unicos,
+        index=0,
+        help="Filtrar por el estatus de compra de la VDR."
+    )
+    
+    # Aplicar segundo filtro (estatus) sobre los datos ya filtrados por sucursal
+    if estatus_seleccionado == "Todas":
+        df_final = df_temp.copy()
+    else:
+        df_final = df_temp[df_temp['estatus'] == estatus_seleccionado].copy()
+    
+    df_final.reset_index(drop=True, inplace=True)
+    
+    # Separador visual
+    st.markdown("---")
+    
+    # Información basada en los datos finales filtrados
+    st.header("ℹ️ Información")
+    total_vdr = df_final['vdr'].nunique()
+    st.metric("VDR únicas cargadas", total_vdr)
+    
+    # Distribución por estatus (conteo de VDR únicas)
+    status_counts = df_final[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
+    st.markdown("**Distribución por estatus (VDR únicas):**")
+    num_status = len(status_counts)
+    cols_per_row = 2
+    rows = math.ceil(num_status / cols_per_row)
+    for r in range(rows):
+        cols = st.columns(cols_per_row)
+        for c in range(cols_per_row):
+            idx = r * cols_per_row + c
+            if idx < num_status:
+                status = status_counts.index[idx]
+                count = status_counts.iloc[idx]
+                cols[c].metric(label=status, value=count)
 
-# Aplicar filtro
-if sucursal_seleccionada == "Todas":
-    df_filtrado = df.copy()
-else:
-    df_filtrado = df[df['sucursal'] == sucursal_seleccionada].copy()
-
-# Reiniciar índices para evitar problemas
-df_filtrado = df_filtrado.reset_index(drop=True)
-registros = df_filtrado.to_dict(orient="records")
+# ------------------------------------------------------------
+# PREPARAR DATOS PARA EL CARRUSEL (basado en df_final)
+# ------------------------------------------------------------
+registros = df_final.to_dict(orient="records")
 
 # ------------------------------------------------------------
 # PAGINACIÓN (10 registros por página)
@@ -501,37 +544,17 @@ carrusel_html = f"""
 """
 
 # ------------------------------------------------------------
-# INTERFAZ STREAMLIT
+# INTERFAZ STREAMLIT (TÍTULO DINÁMICO CON LOS FILTROS ACTIVOS)
 # ------------------------------------------------------------
-if sucursal_seleccionada == "Todas":
-    st.title("📦 Monitor de Recepciones (VDR) – Todas las sucursales")
-else:
-    st.title(f"📦 Monitor de Recepciones (VDR) – {sucursal_seleccionada}")
-
+titulo = "📦 Monitor de Recepciones (VDR)"
+if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
+    filtros_activos = []
+    if sucursal_seleccionada != "Todas":
+        filtros_activos.append(f"Sucursal: {sucursal_seleccionada}")
+    if estatus_seleccionado != "Todas":
+        filtros_activos.append(f"Estatus: {estatus_seleccionado}")
+    titulo += " – " + " | ".join(filtros_activos)
+st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
 components.html(carrusel_html, height=960, scrolling=False)
-
-# ------------------------------------------------------------
-# PANEL LATERAL CON MÉTRICAS BASADAS EN LOS DATOS FILTRADOS
-# ------------------------------------------------------------
-with st.sidebar:
-    st.header("ℹ️ Información")
-
-    total_vdr = df_filtrado['vdr'].nunique()
-    st.metric("VDR únicas cargadas", total_vdr)
-
-    # Contar VDR únicas por estatus
-    status_counts = df_filtrado[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
-    st.markdown("**Distribución por estatus (VDR únicas):**")
-    num_status = len(status_counts)
-    cols_per_row = 2
-    rows = math.ceil(num_status / cols_per_row)
-    for r in range(rows):
-        cols = st.columns(cols_per_row)
-        for c in range(cols_per_row):
-            idx = r * cols_per_row + c
-            if idx < num_status:
-                status = status_counts.index[idx]
-                count = status_counts.iloc[idx]
-                cols[c].metric(label=status, value=count)
