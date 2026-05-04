@@ -113,12 +113,6 @@ with st.sidebar:
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
 
-    # Botón para refrescar los datos manualmente (incrementa el cache buster)
-    st.markdown("---")
-    if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
-        st.session_state.cache_buster += 1
-        st.rerun()
-
 # ------------------------------------------------------------
 # PREPARAR DATOS PARA EL CARRUSEL (basado en df_final)
 # ------------------------------------------------------------
@@ -133,7 +127,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO (PAGINACIÓN NUMÉRICA)
+# HTML/CSS/JS DEL CARRUSEL PAGINADO (productos completos, texto en negrita)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -177,7 +171,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 1100px;  /* Ajustado para mostrar 10 tarjetas completas */
+            height: 900px;
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -193,7 +187,7 @@ carrusel_html = f"""
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 100%;
+            width: 96%;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -226,15 +220,15 @@ carrusel_html = f"""
         .card-header {{
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             font-size: 0.85rem;
         }}
         .sucursal-vdr {{
             font-weight: 700;
             color: #1a1a1a;
-            white-space: normal; /* Permite que el texto se envuelva */
-            overflow: visible;
-            word-break: break-word;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
         .status-badge {{
             display: inline-block;
@@ -245,8 +239,6 @@ carrusel_html = f"""
             text-transform: uppercase;
             color: white;
             white-space: nowrap;
-            flex-shrink: 0;
-            margin-left: 8px;
         }}
         .status-badge.integrada {{ background: var(--color-green); }}
         .status-badge.en-validacion {{ background: var(--color-orange); }}
@@ -315,56 +307,22 @@ carrusel_html = f"""
             transition: background 0.2s;
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
-        
-        /* PAGINACIÓN NUMÉRICA (segmentación) */
-        .pagination-container {{
+        .dots {{
             display: flex;
-            align-items: center;
-            gap: 4px;
+            gap: 6px;
             margin-top: 6px;
-            flex-wrap: wrap;
-            justify-content: center;
         }}
-        .page-number {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 28px;
-            height: 28px;
-            padding: 0 4px;
-            border-radius: 4px;
-            background: #e0e0e0;
-            color: #333;
-            font-size: 0.75rem;
-            font-weight: bold;
+        .dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #bbb;
             cursor: pointer;
-            transition: background 0.2s, color 0.2s;
+            transition: background 0.2s;
         }}
-        .page-number:hover {{
-            background: #bdbdbd;
-        }}
-        .page-number.active {{
+        .dot.active-dot {{
             background: var(--color-green);
-            color: white;
-            box-shadow: 0 0 0 2px rgba(46,125,50,0.3);
-        }}
-        .dots-arrow {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 28px;
-            height: 28px;
-            padding: 0 4px;
-            border-radius: 4px;
-            background: transparent;
-            color: #555;
-            font-size: 0.9rem;
-            font-weight: bold;
-            cursor: pointer;
-            user-select: none;
-        }}
-        .dots-arrow:hover {{
-            background: #e0e0e0;
+            transform: scale(1.2);
         }}
         .empty-state {{
             text-align: center;
@@ -382,20 +340,20 @@ carrusel_html = f"""
             <div class="carousel-track" id="track"></div>
         </div>
         <button class="nav-btn next" id="nextBtn" title="Página siguiente">▼</button>
-        <div class="pagination-container" id="pagination"></div>
+        <div class="dots" id="dots"></div>
         <div aria-live="polite" id="announce" style="position:absolute;left:-9999px"></div>
     </div>
 
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 1100;
+        const PAGE_HEIGHT = 900;
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
-        const paginationContainer = document.getElementById('pagination');
+        const dotsContainer = document.getElementById('dots');
         const announcer = document.getElementById('announce');
 
         let currentPage = 0;
@@ -444,13 +402,11 @@ carrusel_html = f"""
             if (totalPages === 0) {{
                 viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles.</div>';
                 prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
-                paginationContainer.innerHTML = '';
                 return;
             }}
             if (totalPages === 1) {{
                 track.innerHTML = `<div class="page-group active" style="top:20px;">${{renderPageGroup(pages[0])}}</div>`;
                 prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden';
-                paginationContainer.innerHTML = '';
                 return;
             }}
 
@@ -469,52 +425,27 @@ carrusel_html = f"""
 
             currentPage = 0;
             track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
-            renderPagination(currentPage);
+            renderDots(currentPage);
         }}
 
-        function renderPagination(activeIdx) {{
-            if (totalPages <= 1) {{
-                paginationContainer.innerHTML = '';
-                return;
+        function renderDots(activeIdx) {{
+            dotsContainer.innerHTML = '';
+            for (let i = 0; i < totalPages; i++) {{
+                const dot = document.createElement('div');
+                dot.className = 'dot' + (i === activeIdx ? ' active-dot' : '');
+                dot.onclick = () => goToPage(i);
+                dotsContainer.appendChild(dot);
             }}
-            
-            // Bloque de 10 páginas
-            const BLOCK_SIZE = 10;
-            const blockStart = Math.floor(activeIdx / BLOCK_SIZE) * BLOCK_SIZE;
-            const blockEnd = Math.min(blockStart + BLOCK_SIZE, totalPages);
-            
-            let html = '';
-            
-            // Flecha para bloque anterior
-            if (blockStart > 0) {{
-                html += `<span class="dots-arrow" onclick="goToPage(${{blockStart - 1}})" title="Anterior ${{BLOCK_SIZE}} páginas">«</span>`;
-            }}
-            
-            // Números de página del bloque actual
-            for (let i = blockStart; i < blockEnd; i++) {{
-                const pageNumber = i + 1;
-                html += `<span class="page-number${{i === activeIdx ? ' active' : ''}}" onclick="goToPage(${{i}})">${{pageNumber}}</span>`;
-            }}
-            
-            // Flecha para bloque siguiente
-            if (blockEnd < totalPages) {{
-                html += `<span class="dots-arrow" onclick="goToPage(${{blockEnd}})" title="Siguiente ${{BLOCK_SIZE}} páginas">»</span>`;
-            }}
-            
-            paginationContainer.innerHTML = html;
         }}
 
         function goToPage(index) {{
             if (totalPages <= 1) return;
-            if (index < 0) index = 0;
-            if (index >= totalPages) index = totalPages - 1;
-            
             currentPage = index;
             const offset = -(index + 1) * PAGE_HEIGHT;
             track.style.transition = 'transform 0.4s ease-in-out';
             track.style.transform = `translateY(${{offset}}px)`;
             updateActivePage();
-            renderPagination(index);
+            renderDots(index);
             announcer.textContent = `Página ${{index+1}} de ${{totalPages}}`;
         }}
 
@@ -532,7 +463,7 @@ carrusel_html = f"""
                 track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
                 currentPage = 0;
                 updateActivePage();
-                renderPagination(0);
+                renderDots(0);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
             }} else if (currentPage < 0) {{
@@ -540,7 +471,7 @@ carrusel_html = f"""
                 track.style.transform = `translateY(${{-totalPages * PAGE_HEIGHT}}px)`;
                 currentPage = totalPages - 1;
                 updateActivePage();
-                renderPagination(totalPages - 1);
+                renderDots(totalPages-1);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
             }}
@@ -548,16 +479,16 @@ carrusel_html = f"""
 
         function next() {{
             if (totalPages <= 1) return;
-            let newPage = currentPage + 1;
-            if (newPage >= totalPages) newPage = 0;
-            goToPage(newPage);
+            currentPage++;
+            if (currentPage >= totalPages) currentPage = totalPages;
+            goToPage(currentPage);
         }}
 
         function prev() {{
             if (totalPages <= 1) return;
-            let newPage = currentPage - 1;
-            if (newPage < 0) newPage = totalPages - 1;
-            goToPage(newPage);
+            currentPage--;
+            if (currentPage < 0) currentPage = -1;
+            goToPage(currentPage);
         }}
 
         function startAuto() {{
@@ -608,4 +539,4 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=1150, scrolling=False)
+components.html(carrusel_html, height=1100, scrolling=False)
