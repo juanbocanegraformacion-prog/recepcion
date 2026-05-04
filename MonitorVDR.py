@@ -14,8 +14,6 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 # INICIALIZAR CACHE BUSTER EN SESSION STATE
 # ------------------------------------------------------------
-# Refrescar automáticamente cada 1800 segundos (30 minutos) sin intervención humana
-
 if "cache_buster" not in st.session_state:
     st.session_state.cache_buster = 0
 
@@ -119,7 +117,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS RESPONSIVO CON PAGINACIÓN NUMÉRICA (BLOQUES DE 10)
+# HTML/CSS/JS DEL CARRUSEL (CON AUTO-REFRESCO JAVASCRIPT)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -127,6 +125,12 @@ carrusel_html = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- AUTO-REFRESCO: recarga la página cada 5 minutos -->
+    <script>
+        setTimeout(function() {{
+            window.location.reload();
+        }}, 300000);  // 300,000 ms = 5 minutos
+    </script>
     <style>
         :root {{
             --color-green: #2E7D32;
@@ -155,7 +159,7 @@ carrusel_html = f"""
         .carousel-wrapper {{
             position: relative;
             width: 100%;
-            max-width: 95vw;          /* Responsivo */
+            max-width: 95vw;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -163,7 +167,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: clamp(800px, 80vh, 1100px);  /* Altura adaptativa */
+            height: clamp(800px, 80vh, 1100px);
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -350,7 +354,6 @@ carrusel_html = f"""
             font-weight: bold;
         }}
 
-        /* MEDIA QUERIES PARA PANTALLAS PEQUEÑAS */
         @media (max-width: 600px) {{
             .carousel-viewport {{
                 height: clamp(600px, 70vh, 800px);
@@ -381,7 +384,6 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        // Altura dinámica tomada del viewport real
         const PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
@@ -390,8 +392,7 @@ carrusel_html = f"""
         const nextBtn = document.getElementById('nextBtn');
         const paginationContainer = document.getElementById('pagination');
         const announcer = document.getElementById('announce');
-        setTimeout(function() { window.location.reload();
-                                   }, 300000);   // 300,000 ms = 5 minutos. Cambia a 600000 para 10 min, etc.
+
         let currentPage = 0;
         let autoTimer = null;
         let paused = false;
@@ -575,17 +576,16 @@ carrusel_html = f"""
             else if (e.key === 'ArrowUp') {{ e.preventDefault(); prev(); stopAuto(); startAuto(); }}
         }});
 
-        // Ajustar altura al redimensionar ventana
         window.addEventListener('resize', () => {{
             const newHeight = viewport.clientHeight;
             if (newHeight !== PAGE_HEIGHT) {{
-                PAGE_HEIGHT = newHeight;
-                // Reconstruir posiciones
+                const oldPage = currentPage;
                 const groups = track.querySelectorAll('.page-group');
                 groups.forEach((g, idx) => {{
                     g.style.top = (idx * PAGE_HEIGHT) + 'px';
                 }});
-                goToPage(currentPage);
+                PAGE_HEIGHT = newHeight;
+                goToPage(oldPage);
             }}
         }});
 
@@ -610,6 +610,6 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
         filtros_activos.append(f"Estatus: {estatus_seleccionado}")
     titulo += " – " + " | ".join(filtros_activos)
 st.title(titulo)
-#st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
+st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
 components.html(carrusel_html, height=1150, scrolling=False)
