@@ -14,7 +14,7 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 # CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA)
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False, ttl=300)  # <--- TTL de 5 minutos (300 segundos)
+@st.cache_data(show_spinner=False, ttl=1800)  # <--- TTL de 30 minutos (1800 segundos)
 def load_data():
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     try:
