@@ -14,11 +14,10 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 # CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA)
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False, ttl=1800)  # <--- TTL de 30 minutos (1800 segundos)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_data():
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     try:
-        # Petición con anti-caché HTTP
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
         cols_map = {
@@ -105,7 +104,7 @@ with st.sidebar:
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
 
-    # --- BOTÓN PARA REFRESCAR LOS DATOS MANUALMENTE ---
+    # Botón para refrescar los datos manualmente
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
         st.cache_data.clear()
@@ -307,22 +306,56 @@ carrusel_html = f"""
             transition: background 0.2s;
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
-        .dots {{
+        
+        /* NUEVO ESTILO PARA LA PAGINACIÓN NUMÉRICA */
+        .pagination-container {{
             display: flex;
-            gap: 6px;
+            align-items: center;
+            gap: 4px;
             margin-top: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
         }}
-        .dot {{
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #bbb;
+        .page-number {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: #e0e0e0;
+            color: #333;
+            font-size: 0.75rem;
+            font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, color 0.2s;
         }}
-        .dot.active-dot {{
+        .page-number:hover {{
+            background: #bdbdbd;
+        }}
+        .page-number.active {{
             background: var(--color-green);
-            transform: scale(1.2);
+            color: white;
+            box-shadow: 0 0 0 2px rgba(46,125,50,0.3);
+        }}
+        .dots-arrow {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: transparent;
+            color: #555;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+        }}
+        .dots-arrow:hover {{
+            background: #e0e0e0;
         }}
         .empty-state {{
             text-align: center;
@@ -340,7 +373,7 @@ carrusel_html = f"""
             <div class="carousel-track" id="track"></div>
         </div>
         <button class="nav-btn next" id="nextBtn" title="Página siguiente">▼</button>
-        <div class="dots" id="dots"></div>
+        <div class="pagination-container" id="pagination"></div>
         <div aria-live="polite" id="announce" style="position:absolute;left:-9999px"></div>
     </div>
 
@@ -353,7 +386,7 @@ carrusel_html = f"""
         const viewport = document.getElementById('viewport');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
-        const dotsContainer = document.getElementById('dots');
+        const paginationContainer = document.getElementById('pagination');
         const announcer = document.getElementById('announce');
 
         let currentPage = 0;
@@ -402,11 +435,13 @@ carrusel_html = f"""
             if (totalPages === 0) {{
                 viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles.</div>';
                 prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
+                paginationContainer.innerHTML = '';
                 return;
             }}
             if (totalPages === 1) {{
                 track.innerHTML = `<div class="page-group active" style="top:20px;">${{renderPageGroup(pages[0])}}</div>`;
                 prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden';
+                paginationContainer.innerHTML = '';
                 return;
             }}
 
@@ -425,27 +460,52 @@ carrusel_html = f"""
 
             currentPage = 0;
             track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
-            renderDots(currentPage);
+            renderPagination(currentPage);
         }}
 
-        function renderDots(activeIdx) {{
-            dotsContainer.innerHTML = '';
-            for (let i = 0; i < totalPages; i++) {{
-                const dot = document.createElement('div');
-                dot.className = 'dot' + (i === activeIdx ? ' active-dot' : '');
-                dot.onclick = () => goToPage(i);
-                dotsContainer.appendChild(dot);
+        function renderPagination(activeIdx) {{
+            if (totalPages <= 1) {{
+                paginationContainer.innerHTML = '';
+                return;
             }}
+            
+            // Bloque de 10 páginas
+            const BLOCK_SIZE = 10;
+            const blockStart = Math.floor(activeIdx / BLOCK_SIZE) * BLOCK_SIZE;
+            const blockEnd = Math.min(blockStart + BLOCK_SIZE, totalPages);
+            
+            let html = '';
+            
+            // Flecha para bloque anterior (si no estamos en el primer bloque)
+            if (blockStart > 0) {{
+                html += `<span class="dots-arrow" onclick="goToPage(${{blockStart - 1}})" title="Anterior ${{BLOCK_SIZE}} páginas">«</span>`;
+            }}
+            
+            // Números de página del bloque actual
+            for (let i = blockStart; i < blockEnd; i++) {{
+                const pageNumber = i + 1;
+                html += `<span class="page-number${{i === activeIdx ? ' active' : ''}}" onclick="goToPage(${{i}})">${{pageNumber}}</span>`;
+            }}
+            
+            // Flecha para bloque siguiente (si hay más páginas)
+            if (blockEnd < totalPages) {{
+                html += `<span class="dots-arrow" onclick="goToPage(${{blockEnd}})" title="Siguiente ${{BLOCK_SIZE}} páginas">»</span>`;
+            }}
+            
+            paginationContainer.innerHTML = html;
         }}
 
         function goToPage(index) {{
             if (totalPages <= 1) return;
+            if (index < 0) index = 0;
+            if (index >= totalPages) index = totalPages - 1;
+            
             currentPage = index;
             const offset = -(index + 1) * PAGE_HEIGHT;
             track.style.transition = 'transform 0.4s ease-in-out';
             track.style.transform = `translateY(${{offset}}px)`;
             updateActivePage();
-            renderDots(index);
+            renderPagination(index);
             announcer.textContent = `Página ${{index+1}} de ${{totalPages}}`;
         }}
 
@@ -463,7 +523,7 @@ carrusel_html = f"""
                 track.style.transform = `translateY(${{-1 * PAGE_HEIGHT}}px)`;
                 currentPage = 0;
                 updateActivePage();
-                renderDots(0);
+                renderPagination(0);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
             }} else if (currentPage < 0) {{
@@ -471,7 +531,7 @@ carrusel_html = f"""
                 track.style.transform = `translateY(${{-totalPages * PAGE_HEIGHT}}px)`;
                 currentPage = totalPages - 1;
                 updateActivePage();
-                renderDots(totalPages-1);
+                renderPagination(totalPages - 1);
                 track.offsetHeight;
                 track.style.transition = 'transform 0.4s ease-in-out';
             }}
@@ -479,16 +539,16 @@ carrusel_html = f"""
 
         function next() {{
             if (totalPages <= 1) return;
-            currentPage++;
-            if (currentPage >= totalPages) currentPage = totalPages;
-            goToPage(currentPage);
+            let newPage = currentPage + 1;
+            if (newPage >= totalPages) newPage = 0;
+            goToPage(newPage);
         }}
 
         function prev() {{
             if (totalPages <= 1) return;
-            currentPage--;
-            if (currentPage < 0) currentPage = -1;
-            goToPage(currentPage);
+            let newPage = currentPage - 1;
+            if (newPage < 0) newPage = totalPages - 1;
+            goToPage(newPage);
         }}
 
         function startAuto() {{
