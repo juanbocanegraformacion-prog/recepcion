@@ -12,11 +12,19 @@ import io
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA)
+# INICIALIZAR CACHE BUSTER EN SESSION STATE
+# ------------------------------------------------------------
+if "cache_buster" not in st.session_state:
+    st.session_state.cache_buster = 0
+
+# ------------------------------------------------------------
+# CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA Y BUSTER)
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=300)
-def load_data():
-    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+def load_data(cache_buster: int):
+    url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+    # Agregar parámetro único para evitar caché de GitHub
+    url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
@@ -41,7 +49,8 @@ def load_data():
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
 
-df = load_data()
+# Llamar a la función con el valor actual del buster
+df = load_data(st.session_state.cache_buster)
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
@@ -104,10 +113,10 @@ with st.sidebar:
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
 
-    # Botón para refrescar los datos manualmente
+    # Botón para refrescar los datos manualmente (incrementa el cache buster)
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
-        st.cache_data.clear()
+        st.session_state.cache_buster += 1
         st.rerun()
 
 # ------------------------------------------------------------
@@ -168,7 +177,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 900px;
+            height: 1100px;  /* Aumentado para que quepan 10 tarjetas */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -380,7 +389,7 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 900;
+        const PAGE_HEIGHT = 1100;
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -599,4 +608,4 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=1100, scrolling=False)
+components.html(carrusel_html, height=1150, scrolling=False)
