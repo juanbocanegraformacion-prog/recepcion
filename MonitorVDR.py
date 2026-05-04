@@ -23,7 +23,6 @@ if "cache_buster" not in st.session_state:
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
-    # Parámetro único para evitar caché de GitHub
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
@@ -49,7 +48,6 @@ def load_data(cache_buster: int):
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
 
-# Llamar a la función con el valor actual del buster
 df = load_data(st.session_state.cache_buster)
 
 # ------------------------------------------------------------
@@ -58,7 +56,6 @@ df = load_data(st.session_state.cache_buster)
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    # Filtro 1: Sucursal
     sucursales = df['sucursal'].unique().tolist()
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
@@ -67,13 +64,11 @@ with st.sidebar:
         help="Selecciona una sucursal para filtrar los datos, o 'Todas' para ver el consolidado."
     )
     
-    # Aplicar filtro de sucursal para obtener opciones dinámicas del filtro de estatus
     if sucursal_seleccionada == "Todas":
         df_temp = df.copy()
     else:
         df_temp = df[df['sucursal'] == sucursal_seleccionada].copy()
     
-    # Filtro 2: Estatus VDR (las opciones cambian según la sucursal seleccionada)
     estatus_unicos = sorted(df_temp['estatus'].unique().tolist())
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
@@ -82,7 +77,6 @@ with st.sidebar:
         help="Filtrar por el estatus de compra de la VDR."
     )
     
-    # Aplicar segundo filtro (estatus) sobre los datos ya filtrados por sucursal
     if estatus_seleccionado == "Todas":
         df_final = df_temp.copy()
     else:
@@ -90,50 +84,40 @@ with st.sidebar:
     
     df_final.reset_index(drop=True, inplace=True)
     
-    # Separador visual
     st.markdown("---")
-    
-    # Información basada en los datos finales filtrados
     st.header("ℹ️ Información")
     total_vdr = df_final['vdr'].nunique()
     st.metric("VDR únicas cargadas", total_vdr)
     
-    # Distribución por estatus (conteo de VDR únicas)
     status_counts = df_final[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
     st.markdown("**Distribución por estatus (VDR únicas):**")
     num_status = len(status_counts)
-    cols_per_row = 2
-    rows = math.ceil(num_status / cols_per_row)
-    for r in range(rows):
-        cols = st.columns(cols_per_row)
-        for c in range(cols_per_row):
-            idx = r * cols_per_row + c
+    for r in range(math.ceil(num_status/2)):
+        cols = st.columns(2)
+        for c in range(2):
+            idx = r*2 + c
             if idx < num_status:
                 status = status_counts.index[idx]
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
 
-    # Botón para refrescar los datos manualmente (incrementa el cache buster)
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
         st.session_state.cache_buster += 1
         st.rerun()
 
 # ------------------------------------------------------------
-# PREPARAR DATOS PARA EL CARRUSEL (basado en df_final)
+# DATOS PARA EL CARRUSEL
 # ------------------------------------------------------------
 registros = df_final.to_dict(orient="records")
 
-# ------------------------------------------------------------
-# PAGINACIÓN (10 registros por página)
-# ------------------------------------------------------------
 PAGE_SIZE = 10
 total = len(registros)
 total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO (COMPLETO, PAGINACIÓN NUMÉRICA)
+# HTML/CSS/JS RESPONSIVO CON PAGINACIÓN NUMÉRICA (BLOQUES DE 10)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -169,7 +153,7 @@ carrusel_html = f"""
         .carousel-wrapper {{
             position: relative;
             width: 100%;
-            max-width: 800px;
+            max-width: 95vw;          /* Responsivo */
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -177,7 +161,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 1100px;  /* Suficiente para 10 tarjetas completas */
+            height: clamp(800px, 80vh, 1100px);  /* Altura adaptativa */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -216,31 +200,31 @@ carrusel_html = f"""
             background: var(--card-bg);
             border-radius: var(--card-border-radius);
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            padding: 6px 10px;
+            padding: clamp(4px, 1vw, 8px) clamp(6px, 2vw, 12px);
             display: flex;
             flex-direction: column;
             gap: 3px;
-            font-size: 0.8rem;
+            font-size: clamp(0.7rem, 1.5vw, 0.85rem);
             font-weight: bold;
         }}
         .card-header {{
             display: flex;
             justify-content: space-between;
-            align-items: flex-start; /* Alinea badge arriba */
-            font-size: 0.85rem;
+            align-items: flex-start;
+            font-size: clamp(0.75rem, 1.6vw, 0.9rem);
         }}
         .sucursal-vdr {{
             font-weight: 700;
             color: #1a1a1a;
-            white-space: normal;   /* Permite multilínea */
+            white-space: normal;
             overflow: visible;
             word-break: break-word;
         }}
         .status-badge {{
             display: inline-block;
-            padding: 1px 8px;
+            padding: 1px 6px;
             border-radius: 12px;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             font-weight: 600;
             text-transform: uppercase;
             color: white;
@@ -254,7 +238,7 @@ carrusel_html = f"""
         .status-badge.anulada {{ background: var(--color-gray); }}
         .status-badge.other {{ background: var(--color-gray); }}
         .producto {{
-            font-size: 0.78rem;
+            font-size: clamp(0.7rem, 1.4vw, 0.8rem);
             font-weight: 600;
             white-space: normal;
             overflow: visible;
@@ -263,7 +247,7 @@ carrusel_html = f"""
             display: flex;
             align-items: center;
             gap: 4px;
-            font-size: 0.68rem;
+            font-size: clamp(0.6rem, 1.2vw, 0.7rem);
             color: #555;
             white-space: normal;
             overflow: visible;
@@ -295,12 +279,6 @@ carrusel_html = f"""
             font-weight: bold;
             white-space: nowrap;
         }}
-        .nav-controls {{
-            display: flex;
-            gap: 12px;
-            margin: 10px 0;
-            align-items: center;
-        }}
         .nav-btn {{
             background: #e0e0e0;
             border: none;
@@ -316,12 +294,12 @@ carrusel_html = f"""
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
 
-        /* PAGINACIÓN NUMÉRICA EN BLOQUES DE 10 */
+        /* PAGINACIÓN NUMÉRICA (BLOQUES DE 10) */
         .pagination-container {{
             display: flex;
             align-items: center;
             gap: 4px;
-            margin-top: 6px;
+            margin-top: 8px;
             flex-wrap: wrap;
             justify-content: center;
         }}
@@ -340,9 +318,7 @@ carrusel_html = f"""
             cursor: pointer;
             transition: background 0.2s, color 0.2s;
         }}
-        .page-number:hover {{
-            background: #bdbdbd;
-        }}
+        .page-number:hover {{ background: #bdbdbd; }}
         .page-number.active {{
             background: var(--color-green);
             color: white;
@@ -363,15 +339,29 @@ carrusel_html = f"""
             cursor: pointer;
             user-select: none;
         }}
-        .dots-arrow:hover {{
-            background: #e0e0e0;
-        }}
+        .dots-arrow:hover {{ background: #e0e0e0; }}
         .empty-state {{
             text-align: center;
             padding: 60px 20px;
             color: #666;
             font-size: 1.1rem;
             font-weight: bold;
+        }}
+
+        /* MEDIA QUERIES PARA PANTALLAS PEQUEÑAS */
+        @media (max-width: 600px) {{
+            .carousel-viewport {{
+                height: clamp(600px, 70vh, 800px);
+            }}
+            .vdr-card {{
+                padding: 4px 6px;
+                font-size: 0.7rem;
+            }}
+            .page-number, .dots-arrow {{
+                min-width: 24px;
+                height: 24px;
+                font-size: 0.65rem;
+            }}
         }}
     </style>
 </head>
@@ -389,7 +379,8 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 1100;   // Coincide con la altura del viewport
+        // Altura dinámica tomada del viewport real
+        const PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -484,18 +475,15 @@ carrusel_html = f"""
             
             let html = '';
             
-            // Flecha a bloque anterior
             if (blockStart > 0) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockStart - 1}})" title="Anterior ${{BLOCK_SIZE}} páginas">«</span>`;
             }}
             
-            // Números del bloque actual
             for (let i = blockStart; i < blockEnd; i++) {{
                 const pageNumber = i + 1;
                 html += `<span class="page-number${{i === activeIdx ? ' active' : ''}}" onclick="goToPage(${{i}})">${{pageNumber}}</span>`;
             }}
             
-            // Flecha a bloque siguiente
             if (blockEnd < totalPages) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockEnd}})" title="Siguiente ${{BLOCK_SIZE}} páginas">»</span>`;
             }}
@@ -584,6 +572,20 @@ carrusel_html = f"""
             else if (e.key === 'ArrowUp') {{ e.preventDefault(); prev(); stopAuto(); startAuto(); }}
         }});
 
+        // Ajustar altura al redimensionar ventana
+        window.addEventListener('resize', () => {{
+            const newHeight = viewport.clientHeight;
+            if (newHeight !== PAGE_HEIGHT) {{
+                PAGE_HEIGHT = newHeight;
+                // Reconstruir posiciones
+                const groups = track.querySelectorAll('.page-group');
+                groups.forEach((g, idx) => {{
+                    g.style.top = (idx * PAGE_HEIGHT) + 'px';
+                }});
+                goToPage(currentPage);
+            }}
+        }});
+
         track.addEventListener('transitionend', handleTransitionEnd);
 
         buildCarousel();
@@ -594,7 +596,7 @@ carrusel_html = f"""
 """
 
 # ------------------------------------------------------------
-# INTERFAZ STREAMLIT (TÍTULO DINÁMICO CON LOS FILTROS ACTIVOS)
+# INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 titulo = "📦 Monitor de Recepciones (VDR)"
 if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
