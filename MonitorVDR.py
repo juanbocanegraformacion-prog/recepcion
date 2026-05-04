@@ -179,7 +179,7 @@ carrusel_html = f"""
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 96%;
+            width: 100%;
             display: flex;
             flex-direction: column;
             gap: 6px;
