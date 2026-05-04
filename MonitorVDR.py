@@ -341,7 +341,7 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 900;
+        const PAGE_HEIGHT = 1200;
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
