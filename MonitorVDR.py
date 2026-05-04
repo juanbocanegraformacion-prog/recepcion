@@ -15,7 +15,7 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # INICIALIZAR CACHE BUSTER EN SESSION STATE
 # ------------------------------------------------------------
 # Refrescar automáticamente cada 1800 segundos (30 minutos) sin intervención humana
-st_autorefresh(interval=1800_000, limit=None, key="auto-refresh")
+
 if "cache_buster" not in st.session_state:
     st.session_state.cache_buster = 0
 
@@ -390,7 +390,9 @@ carrusel_html = f"""
         const nextBtn = document.getElementById('nextBtn');
         const paginationContainer = document.getElementById('pagination');
         const announcer = document.getElementById('announce');
-
+        setTimeout(function() {
+             window.location.reload();
+         }, 300000);   // 300,000 ms = 5 minutos. Cambia a 600000 para 10 min, etc.
         let currentPage = 0;
         let autoTimer = null;
         let paused = false;
