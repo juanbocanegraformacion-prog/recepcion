@@ -12,11 +12,10 @@ import io
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL O DATOS DE EJEMPLO
+# CARGA DE DATOS DESDE EXCEL (SIN DATOS DE EJEMPLO EN MEMORIA)
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def load_data():
-    #url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/Reporte-Consolidado-Compras-Producto%2B29-04-2026_29-04-2026.xlsx"
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     try:
         res = requests.get(url)
@@ -34,36 +33,11 @@ def load_data():
         }
         df = df[list(cols_map.keys())].rename(columns=cols_map)
     except Exception as e:
-        st.warning(f"No se pudo cargar el archivo Excel ({e}). Usando datos de ejemplo.")
-        sample_data = [
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO FRAGANCIA CITRICA LAS LLAVES 900 GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 50, 50],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 400GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 36, 32],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014430", "Integrada", "ODC-01-001-00015743", "Parcial",
-             "DETERGENTE EN POLVO FRAGANCIA BEBE LAS LLAVES 900GR", "ALIMENTOS POLAR COMERCIAL, C.A.", 10, 10],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
-             "CERVEZA POLAR LIGHT RET 222ML", "CERVECERIA POLAR, C.A.", 540, 540],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014431", "Integrada", "ODC-01-001-00015805", "Parcial",
-             "GAVERA DE CERVEZA POLAR", "CERVECERIA POLAR, C.A.", 15, 15],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO ZERO PEPSI 2L", "PEPSI-COLA VENEZUELA C.A.", 12, 12],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014432", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO SABOR PIÑA PET GOLDEN 2L", "PEPSI-COLA VENEZUELA C.A.", 30, 30],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO KOLITA GOLDEN 2 L", "PEPSI-COLA VENEZUELA C.A.", 54, 54],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO KOLITA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014433", "Integrada", "ODC-01-001-00015798", "Parcial",
-             "REFRESCO DE PIÑA GOLDEN 1.5 L", "PEPSI-COLA VENEZUELA C.A.", 60, 60],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014434", "En validación", "ODC-01-001-00015799", "Total",
-             "MORTADELA DE POLLO SUPERIOR HERMO 1 KG.", "INDUSTRIAS ALIMENTICIAS HERMO DE VENEZUELA S.A.", 20, 15],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014435", "Pendiente por validar", "ODC-01-005-00013785", "Parcial",
-             "PAÑAL ACTIVESEC DISNEY TALLA XG HUGGIES 25 UND", "DIMASSI, C.A.", 24, 8],
-            ["JUAN BAUTISTA ARISMENDI", "VDR-01-001-00014436", "Anulada", "ODC-01-016-00016341", "Parcial",
-             "JAMON ESPALDA AHUMADA VISKING DELGADO ALIMEX 1.6 KG", "PRODUCTOS ALIMEX, C.A.", 21, 0],
-        ]
-        df = pd.DataFrame(sample_data, columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
+        # En lugar de usar datos de ejemplo, mostramos error y devolvemos DataFrame vacío
+        st.error(f"No se pudo cargar el archivo Excel. Verifique la URL o la conexión.\nDetalle: {e}")
+        df = pd.DataFrame(columns=[
+            "sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"
+        ])
     df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
