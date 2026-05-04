@@ -23,7 +23,7 @@ if "cache_buster" not in st.session_state:
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
-    #url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
+    url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
