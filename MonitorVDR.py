@@ -23,7 +23,7 @@ if "cache_buster" not in st.session_state:
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
-    # Agregar parámetro único para evitar caché de GitHub
+    # Parámetro único para evitar caché de GitHub
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
@@ -133,7 +133,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO (productos completos, texto en negrita)
+# HTML/CSS/JS DEL CARRUSEL PAGINADO (PAGINACIÓN NUMÉRICA)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -177,7 +177,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 1100px;  /* Aumentado para que quepan 10 tarjetas */
+            height: 1100px;  /* Ajustado para mostrar 10 tarjetas completas */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -232,7 +232,7 @@ carrusel_html = f"""
         .sucursal-vdr {{
             font-weight: 700;
             color: #1a1a1a;
-            white-space: normal;
+            white-space: normal; /* Permite que el texto se envuelva */
             overflow: visible;
             word-break: break-word;
         }}
@@ -316,7 +316,7 @@ carrusel_html = f"""
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
         
-        /* NUEVO ESTILO PARA LA PAGINACIÓN NUMÉRICA */
+        /* PAGINACIÓN NUMÉRICA (segmentación) */
         .pagination-container {{
             display: flex;
             align-items: center;
@@ -485,7 +485,7 @@ carrusel_html = f"""
             
             let html = '';
             
-            // Flecha para bloque anterior (si no estamos en el primer bloque)
+            // Flecha para bloque anterior
             if (blockStart > 0) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockStart - 1}})" title="Anterior ${{BLOCK_SIZE}} páginas">«</span>`;
             }}
@@ -496,7 +496,7 @@ carrusel_html = f"""
                 html += `<span class="page-number${{i === activeIdx ? ' active' : ''}}" onclick="goToPage(${{i}})">${{pageNumber}}</span>`;
             }}
             
-            // Flecha para bloque siguiente (si hay más páginas)
+            // Flecha para bloque siguiente
             if (blockEnd < totalPages) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockEnd}})" title="Siguiente ${{BLOCK_SIZE}} páginas">»</span>`;
             }}
