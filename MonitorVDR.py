@@ -12,13 +12,21 @@ import io
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL (SIN DATOS DE EJEMPLO EN MEMORIA)
+# INICIALIZAR CACHE BUSTER EN SESSION STATE
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def load_data():
-    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+if "cache_buster" not in st.session_state:
+    st.session_state.cache_buster = 0
+
+# ------------------------------------------------------------
+# CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA Y BUSTER)
+# ------------------------------------------------------------
+@st.cache_data(show_spinner=False, ttl=300)
+def load_data(cache_buster: int):
+    url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+    # Parámetro único para evitar caché de GitHub
+    url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
-        res = requests.get(url)
+        res = requests.get(url, headers={'Cache-Control': 'no-cache'})
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
         cols_map = {
             'Sucursal': 'sucursal',
@@ -33,7 +41,7 @@ def load_data():
         }
         df = df[list(cols_map.keys())].rename(columns=cols_map)
     except Exception as e:
-        st.warning(f"No se pudo cargar el archivo Excel ({e}). Usando datos de ejemplo.")
+        st.error(f"No se pudo cargar el archivo Excel. Verifique la URL o la conexión.\nDetalle: {e}")
         df = pd.DataFrame(columns=[
             "sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"
         ])
@@ -41,7 +49,8 @@ def load_data():
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
 
-df = load_data()
+# Llamar a la función con el valor actual del buster
+df = load_data(st.session_state.cache_buster)
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
@@ -104,6 +113,12 @@ with st.sidebar:
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
 
+    # Botón para refrescar los datos manualmente (incrementa el cache buster)
+    st.markdown("---")
+    if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
+        st.session_state.cache_buster += 1
+        st.rerun()
+
 # ------------------------------------------------------------
 # PREPARAR DATOS PARA EL CARRUSEL (basado en df_final)
 # ------------------------------------------------------------
@@ -118,7 +133,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL PAGINADO (PAGINACIÓN NUMÉRICA)
+# HTML/CSS/JS DEL CARRUSEL PAGINADO (COMPLETO, PAGINACIÓN NUMÉRICA)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -162,7 +177,7 @@ carrusel_html = f"""
         }}
         .carousel-viewport {{
             width: 100%;
-            height: 900px;
+            height: 1100px;  /* Suficiente para 10 tarjetas completas */
             overflow: hidden;
             position: relative;
             border-radius: var(--card-border-radius);
@@ -178,7 +193,7 @@ carrusel_html = f"""
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: 96%;
+            width: 100%;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -211,15 +226,15 @@ carrusel_html = f"""
         .card-header {{
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start; /* Alinea badge arriba */
             font-size: 0.85rem;
         }}
         .sucursal-vdr {{
             font-weight: 700;
             color: #1a1a1a;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;   /* Permite multilínea */
+            overflow: visible;
+            word-break: break-word;
         }}
         .status-badge {{
             display: inline-block;
@@ -230,6 +245,8 @@ carrusel_html = f"""
             text-transform: uppercase;
             color: white;
             white-space: nowrap;
+            flex-shrink: 0;
+            margin-left: 8px;
         }}
         .status-badge.integrada {{ background: var(--color-green); }}
         .status-badge.en-validacion {{ background: var(--color-orange); }}
@@ -299,7 +316,7 @@ carrusel_html = f"""
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
 
-        /* PAGINACIÓN NUMÉRICA (reemplaza los dots) */
+        /* PAGINACIÓN NUMÉRICA EN BLOQUES DE 10 */
         .pagination-container {{
             display: flex;
             align-items: center;
@@ -372,7 +389,7 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = 900;
+        const PAGE_HEIGHT = 1100;   // Coincide con la altura del viewport
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -461,24 +478,24 @@ carrusel_html = f"""
                 return;
             }}
             
-            const BLOCK_SIZE = 10;                       // bloques de 10 páginas
+            const BLOCK_SIZE = 10;
             const blockStart = Math.floor(activeIdx / BLOCK_SIZE) * BLOCK_SIZE;
             const blockEnd = Math.min(blockStart + BLOCK_SIZE, totalPages);
             
             let html = '';
             
-            // Flecha a bloque anterior (si no estamos en el primero)
+            // Flecha a bloque anterior
             if (blockStart > 0) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockStart - 1}})" title="Anterior ${{BLOCK_SIZE}} páginas">«</span>`;
             }}
             
-            // Números de página del bloque actual
+            // Números del bloque actual
             for (let i = blockStart; i < blockEnd; i++) {{
                 const pageNumber = i + 1;
                 html += `<span class="page-number${{i === activeIdx ? ' active' : ''}}" onclick="goToPage(${{i}})">${{pageNumber}}</span>`;
             }}
             
-            // Flecha a bloque siguiente (si hay más páginas)
+            // Flecha a bloque siguiente
             if (blockEnd < totalPages) {{
                 html += `<span class="dots-arrow" onclick="goToPage(${{blockEnd}})" title="Siguiente ${{BLOCK_SIZE}} páginas">»</span>`;
             }}
@@ -590,4 +607,4 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=1100, scrolling=False)
+components.html(carrusel_html, height=1150, scrolling=False)
