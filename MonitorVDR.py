@@ -14,8 +14,8 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 # INICIALIZAR CACHE BUSTER EN SESSION STATE
 # ------------------------------------------------------------
-#if "cache_buster" not in st.session_state:
-#    st.session_state.cache_buster = 0
+if "cache_buster" not in st.session_state:
+    st.session_state.cache_buster = 0
 
 # ------------------------------------------------------------
 # CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA Y BUSTER)
