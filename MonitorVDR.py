@@ -1,267 +1,267 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
-import math
-import json
 import requests
 import io
+import sqlite3
+import json
+from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
 # ------------------------------------------------------------
-# 1. CONFIGURACIÓN DE PÁGINA (PANTALLA COMPLETA)
+# CONFIGURACIÓN DE PÁGINA
 # ------------------------------------------------------------
-st.set_page_config(
-    page_title="Monitor VDR - RIOMARKET", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
-
-# Inyección de CSS para eliminar márgenes laterales de Streamlit y aprovechar el ancho
-st.markdown("""
-    <style>
-        .block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-            padding-left: 2rem;
-            padding-right: 2rem;
-        }
-        iframe {
-            width: 100%;
-        }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Monitor ODC - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS
+# BASE DE DATOS (SQLite) - Persistencia Mejorada
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def load_data():
-    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+def init_db():
+    conn = sqlite3.connect('calendario.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS proveedores_maestro
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       nombre TEXT, 
+                       comprador_habitual TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS calendario_historico
+                      (id INTEGER PRIMARY KEY, 
+                       fecha_semana TEXT, 
+                       dia_semana TEXT, 
+                       proveedores TEXT)''')
     try:
-        res = requests.get(url)
-        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
-        cols_map = {
-            'Sucursal': 'sucursal',
-            'N° Doc.Compra (VDR)': 'vdr',
-            'Estatus compra (VDR)': 'estatus',
-            'Número de orden de compra': 'odc',
-            'Tipo ODC': 'tipo_odc',
-            'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',
-            'Empaques Esperados': 'esperado',
-            'Empaques Recibidos': 'recibido'
-        }
-        df = df[list(cols_map.keys())].rename(columns=cols_map)
-    except Exception as e:
-        st.error(f"No se pudo cargar el archivo Excel: {e}")
-        df = pd.DataFrame(columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
-    
-    df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
-    df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
+        cursor.execute('''CREATE UNIQUE INDEX idx_fecha_dia ON calendario_historico (fecha_semana, dia_semana)''')
+    except sqlite3.OperationalError:
+        pass 
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ------------------------------------------------------------
+# AUTENTICACIÓN
+# ------------------------------------------------------------
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+
+if not st.session_state.autenticado:
+    st.title("Inicio de sesión requerido")
+    with st.form("login_form"):
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Acceder")
+        if submitted:
+            if password == "RioMarket2026":
+                st.session_state.autenticado = True
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
+    st.stop()
+
+# ------------------------------------------------------------
+# FUNCIONES DE LÓGICA
+# ------------------------------------------------------------
+dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+def cargar_semana(fecha_consulta):
+    conn = sqlite3.connect('calendario.db')
+    fecha_str = str(fecha_consulta)
+    df = pd.read_sql_query(
+        "SELECT dia_semana, proveedores FROM calendario_historico WHERE fecha_semana = ?",
+        conn, params=(fecha_str,)
+    )
+
+    def split_prov_safe(s):
+        if not s: return []
+        return [p.strip() for p in s.split('|') if p.strip()]
+
+    if not df.empty:
+        res = dict(zip(df['dia_semana'], df['proveedores'].apply(split_prov_safe)))
+        conn.close()
+        return res
+
+    # Si no hay datos, buscar la última semana planificada para clonar
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(fecha_semana) FROM calendario_historico WHERE fecha_semana < ?", (fecha_str,))
+    ultima = cursor.fetchone()
+    if ultima and ultima[0]:
+        df_h = pd.read_sql_query(
+            "SELECT dia_semana, proveedores FROM calendario_historico WHERE fecha_semana = ?",
+            conn, params=(ultima[0],)
+        )
+        conn.close()
+        return dict(zip(df_h['dia_semana'], df_h['proveedores'].apply(split_prov_safe)))
+
+    conn.close()
+    return {d: [] for d in dias_semana}
+
+def guardar_calendario(fecha, calendario_dict):
+    conn = sqlite3.connect('calendario.db')
+    cursor = conn.cursor()
+    for dia, lista_provs in calendario_dict.items():
+        provs_str = "|".join([p.strip().upper() for p in lista_provs if p.strip()])
+        cursor.execute(
+            "INSERT OR REPLACE INTO calendario_historico (fecha_semana, dia_semana, proveedores) VALUES (?, ?, ?)",
+            (str(fecha), dia, provs_str)
+        )
+    conn.commit()
+    conn.close()
+
+def obtener_compradores_autorizados():
+    conn = sqlite3.connect('calendario.db')
+    df = pd.read_sql_query("SELECT id, nombre, comprador_habitual FROM proveedores_maestro", conn)
+    conn.close()
     return df
 
-df = load_data()
+def obtener_proveedores_registrados():
+    conn = sqlite3.connect('calendario.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT nombre FROM proveedores_maestro ORDER BY nombre")
+    provs = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return provs
 
 # ------------------------------------------------------------
-# FILTROS EN SIDEBAR
+# GESTIÓN DE FECHAS (sesión)
+# ------------------------------------------------------------
+if 'fecha_referencia' not in st.session_state:
+    hoy = datetime.now()
+    st.session_state.fecha_referencia = (hoy - timedelta(days=hoy.weekday())).date()
+
+# ------------------------------------------------------------
+# SIDEBAR
 # ------------------------------------------------------------
 with st.sidebar:
-    st.header("🔎 Filtros")
-    
-    sucursales = df['sucursal'].unique().tolist()
-    sucursal_seleccionada = st.selectbox(
-        "Sucursal",
-        options=["Todas"] + sorted(sucursales),
-        index=0
-    )
-    
-    if sucursal_seleccionada == "Todas":
-        df_temp = df.copy()
-    else:
-        df_temp = df[df['sucursal'] == sucursal_seleccionada].copy()
-    
-    estatus_unicos = sorted(df_temp['estatus'].unique().tolist())
-    estatus_seleccionado = st.selectbox(
-        "Estatus VDR",
-        options=["Todas"] + estatus_unicos,
-        index=0
-    )
-    
-    if estatus_seleccionado == "Todas":
-        df_final = df_temp.copy()
-    else:
-        df_final = df_temp[df_temp['estatus'] == estatus_seleccionado].copy()
-    
-    df_final.reset_index(drop=True, inplace=True)
-    
-    st.markdown("---")
-    st.header("ℹ️ Información")
-    total_vdr = df_final['vdr'].nunique()
-    st.metric("VDR únicas", total_vdr)
-    
-    status_counts = df_final[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
-    for status, count in status_counts.items():
-        st.write(f"**{status}:** {count}")
+    st.header("⚙️ Configuración")
 
-# ------------------------------------------------------------
-# PREPARAR DATOS Y PAGINACIÓN
-# ------------------------------------------------------------
-registros = df_final.to_dict(orient="records")
-PAGE_SIZE = 10
-total = len(registros)
-total_pages = max(1, math.ceil(total / PAGE_SIZE))
-pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
-
-# ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL (Actualizado para ocupar ancho)
-# ------------------------------------------------------------
-carrusel_html = f"""
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <style>
-        :root {{
-            --color-green: #2E7D32; --color-orange: #F57C00; --color-red: #D32F2F;
-            --color-gray: #757575; --color-blue: #1976D2; --card-bg: #FFFFFF;
-        }}
-        body {{ font-family: 'Segoe UI', sans-serif; background: #f0f4f8; margin: 0; padding: 10px; overflow: hidden; }}
-        .carousel-wrapper {{ width: 100%; display: flex; flex-direction: column; align-items: center; }}
-        .carousel-viewport {{ width: 100%; max-width: 1200px; height: 920px; overflow: hidden; position: relative; }}
-        .carousel-track {{ position: relative; width: 100%; height: 100%; transition: transform 0.4s ease-in-out; }}
-        .page-group {{
-            position: absolute; width: 100%; display: flex; flex-direction: column; 
-            gap: 8px; padding: 10px; box-sizing: border-box;
-        }}
-        .page-group.active {{ z-index: 2; }}
-        .vdr-card {{
-            background: var(--card-bg); border-radius: 8px; padding: 10px 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 4px;
-        }}
-        .card-header {{ display: flex; justify-content: space-between; align-items: center; font-weight: bold; }}
-        .status-badge {{ padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; color: white; text-transform: uppercase; }}
-        .status-badge.integrada {{ background: var(--color-green); }}
-        .status-badge.en-validacion {{ background: var(--color-orange); }}
-        .status-badge.pendiente-por-validar {{ background: var(--color-red); }}
-        .status-badge.anulada {{ background: var(--color-gray); }}
-        .status-badge.other {{ background: var(--color-gray); }}
-        .producto {{ font-weight: 600; color: #333; }}
-        .info-row {{ font-size: 0.75rem; color: #666; }}
-        .progress-container {{ display: flex; align-items: center; gap: 10px; margin-top: 5px; }}
-        .progress-bar {{ flex: 1; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }}
-        .progress-fill {{ height: 100%; background: var(--color-green); transition: width 0.3s; }}
-        .progress-text {{ font-family: monospace; font-weight: bold; font-size: 0.8rem; min-width: 120px; }}
-        .nav-controls {{ display: flex; gap: 20px; margin-top: 10px; }}
-        .nav-btn {{ 
-            background: white; border: 1px solid #ccc; border-radius: 50%; width: 40px; height: 40px; 
-            cursor: pointer; font-size: 1.2rem; transition: 0.2s;
-        }}
-        .nav-btn:hover {{ background: var(--color-green); color: white; border-color: var(--color-green); }}
-        .dots {{ display: flex; gap: 8px; margin-top: 10px; }}
-        .dot {{ width: 10px; height: 10px; border-radius: 50%; background: #ccc; cursor: pointer; }}
-        .dot.active-dot {{ background: var(--color-green); transform: scale(1.2); }}
-    </style>
-</head>
-<body>
-    <div class="carousel-wrapper">
-        <div class="carousel-viewport" id="viewport">
-            <div class="carousel-track" id="track"></div>
-        </div>
-        <div class="nav-controls">
-            <button class="nav-btn" id="prevBtn">▲</button>
-            <div class="dots" id="dots"></div>
-            <button class="nav-btn" id="nextBtn">▼</button>
-        </div>
-    </div>
-
-    <script>
-        const pages = {json.dumps(pages)};
-        const totalPages = pages.length;
-        const PAGE_HEIGHT = 920;
-        let currentPage = 0;
-
-        const track = document.getElementById('track');
-        const dotsContainer = document.getElementById('dots');
-
-        function getStatusClass(s) {{
-            const n = s.toLowerCase();
-            if (n.includes('integrada')) return 'integrada';
-            if (n.includes('en-validacion')) return 'en-validacion';
-            if (n.includes('pendiente')) return 'pendiente-por-validar';
-            return 'other';
-        }}
-
-        function renderPages() {{
-            track.innerHTML = '';
-            pages.forEach((page, i) => {{
-                const group = document.createElement('div');
-                group.className = 'page-group' + (i === 0 ? ' active' : '');
-                group.style.top = (i * PAGE_HEIGHT) + 'px';
-                group.innerHTML = page.map(item => {{
-                    const pct = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
-                    return `
-                        <div class="vdr-card">
-                            <div class="card-header">
-                                <span>${{item.sucursal}} · ${{item.vdr}}</span>
-                                <span class="status-badge ${{getStatusClass(item.estatus)}}">${{item.estatus}}</span>
-                            </div>
-                            <div class="info-row">📄 ODC: ${{item.odc}} | Tipo: ${{item.tipo_odc}}</div>
-                            <div class="producto">${{item.producto}}</div>
-                            <div class="info-row">🏭 ${{item.proveedor}}</div>
-                            <div class="progress-container">
-                                <div class="progress-bar"><div class="progress-fill" style="width:${{pct}}%"></div></div>
-                                <div class="progress-text">${{item.recibido}} / ${{item.esperado}} (${{pct}}%)</div>
-                            </div>
-                        </div>`;
-                }}).join('');
-                track.appendChild(group);
-            }});
-        }}
-
-        function updateCarousel() {{
-            track.style.transform = `translateY(${{-currentPage * PAGE_HEIGHT}}px)`;
-            document.querySelectorAll('.dot').forEach((d, i) => d.className = 'dot' + (i === currentPage ? ' active-dot' : ''));
-        }}
-
-        function renderDots() {{
-            dotsContainer.innerHTML = '';
-            for(let i=0; i<totalPages; i++) {{
-                const d = document.createElement('div');
-                d.className = 'dot' + (i===0?' active-dot':'');
-                d.onclick = () => {{ currentPage = i; updateCarousel(); }};
-                dotsContainer.appendChild(d);
-            }}
-        }}
-
-        document.getElementById('nextBtn').onclick = () => {{ currentPage = (currentPage + 1) % totalPages; updateCarousel(); }};
-        document.getElementById('prevBtn').onclick = () => {{ currentPage = (currentPage - 1 + totalPages) % totalPages; updateCarousel(); }};
+    with st.expander("📅 Planificación Semanal", expanded=True):
+        dia_edit = st.selectbox("Día a editar:", dias_semana)
+        cal_actual = cargar_semana(st.session_state.fecha_referencia)
+        provs_registrados = obtener_proveedores_registrados()
         
-        window.addEventListener('keydown', e => {{
-            if (e.key === 'ArrowDown') {{ currentPage = (currentPage + 1) % totalPages; updateCarousel(); }}
-            if (e.key === 'ArrowUp') {{ currentPage = (currentPage - 1 + totalPages) % totalPages; updateCarousel(); }}
-        }});
+        if not provs_registrados:
+            st.warning("Registre proveedores primero.")
+        else:
+            seleccion_actual = [p for p in cal_actual.get(dia_edit, []) if p in provs_registrados]
+            nuevos_seleccionados = st.multiselect(
+                "Proveedores:", options=provs_registrados, default=seleccion_actual
+            )
+            if st.button("💾 Guardar Plan"):
+                cal_actual[dia_edit] = [p.strip().upper() for p in nuevos_seleccionados]
+                guardar_calendario(st.session_state.fecha_referencia, cal_actual)
+                st.success("Guardado.")
+                st.rerun()
 
-        renderPages();
-        renderDots();
-        setInterval(() => {{ currentPage = (currentPage + 1) % totalPages; updateCarousel(); }}, 15000);
-    </script>
-</body>
-</html>
-"""
+    with st.expander("👤 Registro Maestro"):
+        new_p = st.text_input("Proveedor:").upper()
+        new_c = st.text_input("Comprador:").upper()
+        if st.button("➕ Agregar"):
+            if new_p and new_c:
+                conn = sqlite3.connect('calendario.db')
+                conn.execute("INSERT INTO proveedores_maestro (nombre, comprador_habitual) VALUES (?, ?)", (new_p, new_c))
+                conn.commit()
+                conn.close()
+                st.rerun()
 
 # ------------------------------------------------------------
-# 2. INTERFAZ STREAMLIT (TÍTULO Y RENDERIZADO)
+# ÁREA PRINCIPAL
 # ------------------------------------------------------------
-# Lógica de título optimizada
-filtros_lista = []
-if sucursal_seleccionada != "Todas": filtros_lista.append(sucursal_seleccionada)
-if estatus_seleccionado != "Todas": filtros_lista.append(estatus_seleccionado)
+st.title("📅 Monitor de Órdenes de Compra")
 
-titulo_display = "📦 Monitor de Recepciones (VDR)"
-if filtros_lista:
-    titulo_display += " • " + " | ".join(filtros_lista)
+col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+with col_nav1:
+    if st.button("⬅️ Anterior"):
+        st.session_state.fecha_referencia -= timedelta(days=7)
+        st.rerun()
+with col_nav3:
+    if st.button("Siguiente ➡️"):
+        st.session_state.fecha_referencia += timedelta(days=7)
+        st.rerun()
 
-st.title(titulo_display)
-st.caption("Modo pantalla completa activo. Use las flechas o el control inferior para navegar.")
+st.markdown(f"### Semana del {st.session_state.fecha_referencia.strftime('%d/%m/%Y')}")
+cal_data = cargar_semana(st.session_state.fecha_referencia)
 
-# Renderizado con altura suficiente para las 10 tarjetas y controles
-components.html(carrusel_html, height=1050, scrolling=False)
+# Visualización de tabla
+df_vis = pd.DataFrame.from_dict(cal_data, orient='index').transpose().fillna("-")
+st.dataframe(df_vis[dias_semana], use_container_width=True, hide_index=True)
+
+st.divider()
+
+# ------------------------------------------------------------
+# SISTEMA DE MONITOREO (CARRUSEL)
+# ------------------------------------------------------------
+st.subheader("🤖 Monitoreo de Registros")
+
+# Lógica para evitar que los registros "desaparezcan" al cambiar de día
+es_semana_actual = st.session_state.fecha_referencia == (datetime.now() - timedelta(days=datetime.now().weekday())).date()
+
+if es_semana_actual:
+    dia_actual_nombre = dias_semana[datetime.now().weekday()]
+    dia_monitoreo = st.selectbox("Filtrar por día:", dias_semana, index=datetime.now().weekday())
+else:
+    dia_monitoreo = st.selectbox("Seleccione día de esta semana para ver registros:", dias_semana)
+
+provs_hoy = cal_data.get(dia_monitoreo, [])
+
+if not provs_hoy:
+    st.info(f"No hay proveedores planificados para el {dia_monitoreo}.")
+else:
+    url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/Calendario_Proveedor/main/ODC_alerta.xlsx"
+    try:
+        res = requests.get(url)
+        df_raw = pd.read_excel(io.BytesIO(res.content))
+        df_raw.columns = df_raw.columns.str.strip()
+        df_raw = df_raw.rename(columns={'Creado por': 'Comprador', 'Sucursal destino': 'SucursalDestino'})
+
+        df_aut = obtener_compradores_autorizados()
+        if not df_aut.empty:
+            df_aut['key'] = df_aut['nombre'].str.strip().upper() + "|" + df_aut['comprador_habitual'].str.strip().upper()
+            set_aut = set(df_aut['key'].tolist())
+            
+            proveedores_upper = [p.strip().upper() for p in provs_hoy]
+
+            def validar(row):
+                p = str(row['Proveedor']).strip().upper()
+                c = str(row['Comprador']).strip().upper()
+                return (p in proveedores_upper) and (f"{p}|{c}" in set_aut)
+
+            df_f = df_raw[df_raw.apply(validar, axis=1)].copy()
+
+            if not df_f.empty:
+                ordenes = []
+                for _, row in df_f.iterrows():
+                    ordenes.append({
+                        'numero': str(row['Número de orden'])[-19:],
+                        'proveedor': row['Proveedor'],
+                        'comprador': row['Comprador'],
+                        'sucursal': row['SucursalDestino']
+                    })
+
+                ordenes_json = json.dumps(ordenes)
+                
+                carrusel_html = f"""
+                <div id="carousel-container" style="background:#fff; border:5px solid #2E7D32; border-radius:20px; padding:40px; text-align:center; font-family:sans-serif;">
+                    <div style="font-size:2rem; color:#2E7D32; font-weight:bold;">ORDEN DE COMPRA</div>
+                    <div id="ord-num" style="font-size:6rem; color:#1B5E20; font-weight:900;">#---</div>
+                    <div id="ord-prov" style="font-size:2rem; font-weight:bold; color:#333;">---</div>
+                    <div id="ord-comp" style="font-size:1.5rem; color:#444; margin-top:10px;">---</div>
+                    <div id="ord-suc" style="font-size:1.5rem; color:#444;">---</div>
+                </div>
+                <script>
+                    const orders = {ordenes_json};
+                    let idx = 0;
+                    function update() {{
+                        const o = orders[idx];
+                        document.getElementById('ord-num').textContent = '#' + o.numero;
+                        document.getElementById('ord-prov').textContent = o.proveedor;
+                        document.getElementById('ord-comp').textContent = 'Comprador: ' + o.comprador;
+                        document.getElementById('ord-suc').textContent = 'Destino: ' + o.sucursal;
+                        idx = (idx + 1) % orders.length;
+                    }}
+                    update();
+                    setInterval(update, 6000);
+                </script>
+                """
+                components.html(carrusel_html, height=450)
+                st.caption(f"🔄 Rotando {len(ordenes)} órdenes validadas.")
+            else:
+                st.warning("No se encontraron órdenes en el Excel que coincidan con la planificación de este día.")
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
