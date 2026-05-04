@@ -2,3 +2,4 @@ pandas
 requests
 openpyxl
 st_autorefresh
+streamlit-autorefresh
