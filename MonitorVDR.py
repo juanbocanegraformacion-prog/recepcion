@@ -607,6 +607,6 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
         filtros_activos.append(f"Estatus: {estatus_seleccionado}")
     titulo += " – " + " | ".join(filtros_activos)
 st.title(titulo)
-st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
+#st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
 components.html(carrusel_html, height=1150, scrolling=False)
