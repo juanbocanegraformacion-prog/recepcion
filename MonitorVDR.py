@@ -531,4 +531,4 @@ if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
-components.html(carrusel_html, height=960, scrolling=False)
+components.html(carrusel_html, height=1100, scrolling=False)
