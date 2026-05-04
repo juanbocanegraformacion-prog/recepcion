@@ -390,9 +390,8 @@ carrusel_html = f"""
         const nextBtn = document.getElementById('nextBtn');
         const paginationContainer = document.getElementById('pagination');
         const announcer = document.getElementById('announce');
-        setTimeout(function() {
-             window.location.reload();
-         }, 300000);   // 300,000 ms = 5 minutos. Cambia a 600000 para 10 min, etc.
+        setTimeout(function() { window.location.reload();
+                                   }, 300000);   // 300,000 ms = 5 minutos. Cambia a 600000 para 10 min, etc.
         let currentPage = 0;
         let autoTimer = null;
         let paused = false;
