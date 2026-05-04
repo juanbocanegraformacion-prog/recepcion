@@ -14,6 +14,8 @@ st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 # ------------------------------------------------------------
 # INICIALIZAR CACHE BUSTER EN SESSION STATE
 # ------------------------------------------------------------
+# Refrescar automáticamente cada 1800 segundos (30 minutos) sin intervención humana
+st_autorefresh(interval=1800_000, limit=None, key="auto-refresh")
 if "cache_buster" not in st.session_state:
     st.session_state.cache_buster = 0
 
