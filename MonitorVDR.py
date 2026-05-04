@@ -12,13 +12,14 @@ import io
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL (SIN DATOS DE EJEMPLO EN MEMORIA)
+# CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA)
 # ------------------------------------------------------------
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)  # <--- TTL de 5 minutos (300 segundos)
 def load_data():
     url = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     try:
-        res = requests.get(url)
+        # Petición con anti-caché HTTP
+        res = requests.get(url, headers={'Cache-Control': 'no-cache'})
         df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
         cols_map = {
             'Sucursal': 'sucursal',
@@ -33,7 +34,6 @@ def load_data():
         }
         df = df[list(cols_map.keys())].rename(columns=cols_map)
     except Exception as e:
-        # En lugar de usar datos de ejemplo, mostramos error y devolvemos DataFrame vacío
         st.error(f"No se pudo cargar el archivo Excel. Verifique la URL o la conexión.\nDetalle: {e}")
         df = pd.DataFrame(columns=[
             "sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"
@@ -104,6 +104,12 @@ with st.sidebar:
                 status = status_counts.index[idx]
                 count = status_counts.iloc[idx]
                 cols[c].metric(label=status, value=count)
+
+    # --- BOTÓN PARA REFRESCAR LOS DATOS MANUALMENTE ---
+    st.markdown("---")
+    if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
+        st.cache_data.clear()
+        st.rerun()
 
 # ------------------------------------------------------------
 # PREPARAR DATOS PARA EL CARRUSEL (basado en df_final)
