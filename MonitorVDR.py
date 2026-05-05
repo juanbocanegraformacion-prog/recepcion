@@ -117,7 +117,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL (CON AUTO-REFRESCO JAVASCRIPT)
+# HTML/CSS/JS DEL CARRUSEL (ROTACIÓN CADA 6 SEGUNDOS, SIN AUTO-REFRESCO DE PÁGINA)
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -125,12 +125,6 @@ carrusel_html = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- AUTO-REFRESCO: recarga la página cada 5 minutos -->
-    <script>
-        setTimeout(function() {{
-            window.location.reload();
-        }}, 300000);  // 300,000 ms = 5 minutos
-    </script>
     <style>
         :root {{
             --color-green: #2E7D32;
@@ -553,7 +547,7 @@ carrusel_html = f"""
 
         function startAuto() {{
             stopAuto();
-            if (totalPages > 1) autoTimer = setInterval(next, 10000);
+            if (totalPages > 1) autoTimer = setInterval(next, 6000);  // ← CAMBIO: de 10000 a 6000 ms
         }}
         function stopAuto() {{ if (autoTimer) clearInterval(autoTimer); }}
 
