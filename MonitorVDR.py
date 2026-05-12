@@ -26,7 +26,11 @@ def load_data(cache_buster: int):
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         res = requests.get(url, headers={'Cache-Control': 'no-cache'})
-        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1)
+        if res.status_code != 200:
+            st.error(f"Error al descargar el archivo. Código HTTP: {res.status_code}")
+            return pd.DataFrame(columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
+        # Forzar el motor openpyxl para archivos .xlsx
+        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1, engine='openpyxl')
         cols_map = {
             'Sucursal': 'sucursal',
             'N° Doc.Compra (VDR)': 'vdr',
@@ -47,8 +51,6 @@ def load_data(cache_buster: int):
     df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
     df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
     return df
-
-df = load_data(st.session_state.cache_buster)
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
