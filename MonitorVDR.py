@@ -25,12 +25,12 @@ def load_data(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
-        res = requests.get(url, headers={'Cache-Control': 'no-cache'})
-        if res.status_code != 200:
-            st.error(f"Error al descargar el archivo. Código HTTP: {res.status_code}")
-            return pd.DataFrame(columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
-        # Forzar el motor openpyxl para archivos .xlsx
-        df = pd.read_excel(io.BytesIO(res.content), sheet_name="Sheet1", header=1, engine='openpyxl')
+        response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=10)
+        response.raise_for_status()  # Lanza excepción si status no es 200
+        excel_data = io.BytesIO(response.content)
+        # Especificar motor para evitar advertencias/errores
+        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
+        
         cols_map = {
             'Sucursal': 'sucursal',
             'N° Doc.Compra (VDR)': 'vdr',
@@ -42,15 +42,30 @@ def load_data(cache_buster: int):
             'Empaques Esperados': 'esperado',
             'Empaques Recibidos': 'recibido'
         }
+        # Verificar que todas las columnas necesarias existan
         df = df[list(cols_map.keys())].rename(columns=cols_map)
+        df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
+        df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
+        return df
     except Exception as e:
-        st.error(f"No se pudo cargar el archivo Excel. Verifique la URL o la conexión.\nDetalle: {e}")
-        df = pd.DataFrame(columns=[
-            "sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"
+        # En lugar de st.error, retornamos DataFrame vacío y mostramos error fuera
+        st.error(f"Error al cargar datos: {e}")
+        # Retorna DataFrame vacío con las columnas esperadas
+        return pd.DataFrame(columns=[
+            "sucursal", "vdr", "estatus", "odc", "tipo_odc",
+            "producto", "proveedor", "esperado", "recibido"
         ])
-    df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
-    df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
-    return df
+
+# Cargar datos (siempre asigna df, aunque sea vacío)
+df = load_data(st.session_state.cache_buster)
+
+# Si por algún motivo df no es DataFrame (ej. None), forzamos vacío
+if not isinstance(df, pd.DataFrame):
+    df = pd.DataFrame(columns=[
+        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
+        "producto", "proveedor", "esperado", "recibido"
+    ])
+
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
