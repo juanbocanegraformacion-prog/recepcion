@@ -6,82 +6,70 @@ import json
 import requests
 import io
 
-# ------------------------------------------------------------
-# CONFIGURACIÓN DE PÁGINA
-# ------------------------------------------------------------
+# Configuración...
 st.set_page_config(page_title="Monitor VDR - RIOMARKET", layout="wide")
 
-# ------------------------------------------------------------
-# INICIALIZAR CACHE BUSTER EN SESSION STATE
-# ------------------------------------------------------------
 if "cache_buster" not in st.session_state:
     st.session_state.cache_buster = 0
+if "uploaded_file" not in st.session_state:
+    st.session_state.uploaded_file = None
 
 # ------------------------------------------------------------
-# CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA Y BUSTER)
+# Función para procesar el Excel (independiente del origen)
+# ------------------------------------------------------------
+def procesar_excel(excel_bytes):
+    excel_data = io.BytesIO(excel_bytes)
+    df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
+    cols_map = {
+        'Sucursal': 'sucursal',
+        'N° Doc.Compra (VDR)': 'vdr',
+        'Estatus compra (VDR)': 'estatus',
+        'Número de orden de compra': 'odc',
+        'Tipo ODC': 'tipo_odc',
+        'Producto': 'producto',
+        'Proveedor de transacción': 'proveedor',
+        'Empaques Esperados': 'esperado',
+        'Empaques Recibidos': 'recibido'
+    }
+    df = df[list(cols_map.keys())].rename(columns=cols_map)
+    df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
+    df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
+    return df
+
+# ------------------------------------------------------------
+# CARGA DE DATOS (URL + fallback a archivo subido)
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=300)
-def load_data(cache_buster: int):
+def load_from_url(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
+    response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=10)
+    response.raise_for_status()
+    content = response.content
+    if not content.startswith(b'PK'):
+        raise ValueError("El archivo descargado no es un Excel válido.")
+    return procesar_excel(content)
+
+# DataFrame final que usará la aplicación
+if st.session_state.uploaded_file is not None:
     try:
-        response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=10)
-        response.raise_for_status()  # Lanza excepción si status no es 200
-
-        # --- Validación adicional: el contenido debe ser un archivo ZIP/Excel ---
-        content = response.content
-        # Un archivo Excel (.xlsx) comienza con los bytes 'PK' (0x50, 0x4B)
-        if not content.startswith(b'PK'):
-            # Intentamos decodificar los primeros 200 caracteres para ver si es HTML
-            preview = content[:200].decode('utf-8', errors='ignore')
-            if '<!DOCTYPE html>' in preview or '<html' in preview:
-                raise ValueError(
-                    "El enlace no devuelve un archivo Excel. Parece ser una página HTML.\n"
-                    "Verifica que el archivo exista en el repositorio y que la rama y ruta sean correctas."
-                )
-            else:
-                raise ValueError(
-                    "El archivo descargado no es un Excel válido (no tiene formato ZIP).\n"
-                    "Posiblemente la URL apunte a un archivo corrupto o de otro tipo."
-                )
-
-        excel_data = io.BytesIO(content)
-        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
-
-        cols_map = {
-            'Sucursal': 'sucursal',
-            'N° Doc.Compra (VDR)': 'vdr',
-            'Estatus compra (VDR)': 'estatus',
-            'Número de orden de compra': 'odc',
-            'Tipo ODC': 'tipo_odc',
-            'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',
-            'Empaques Esperados': 'esperado',
-            'Empaques Recibidos': 'recibido'
-        }
-        # Verificar que todas las columnas necesarias existan
-        df = df[list(cols_map.keys())].rename(columns=cols_map)
-        df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
-        df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
-        return df
+        df = procesar_excel(st.session_state.uploaded_file.getvalue())
+        st.sidebar.success("✅ Usando archivo subido manualmente")
     except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
-        # Retorna DataFrame vacío con las columnas esperadas
-        return pd.DataFrame(columns=[
-            "sucursal", "vdr", "estatus", "odc", "tipo_odc",
-            "producto", "proveedor", "esperado", "recibido"
-        ])
-
-# Cargar datos (siempre asigna df, aunque sea vacío)
-df = load_data(st.session_state.cache_buster)
-
-# Si por algún motivo df no es DataFrame (ej. None), forzamos vacío
-if not isinstance(df, pd.DataFrame):
-    df = pd.DataFrame(columns=[
-        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
-        "producto", "proveedor", "esperado", "recibido"
-    ])
-
+        st.sidebar.error(f"Error al leer archivo subido: {e}")
+        df = pd.DataFrame(columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
+else:
+    try:
+        df = load_from_url(st.session_state.cache_buster)
+    except Exception as e:
+        st.warning(f"No se pudo cargar el archivo desde la URL: {e}")
+        st.info("Puedes subir manualmente el archivo Excel a continuación.")
+        uploaded = st.file_uploader("Subir archivo VDR_alerta.xlsx", type=["xlsx"])
+        if uploaded is not None:
+            st.session_state.uploaded_file = uploaded
+            st.rerun()
+        else:
+            df = pd.DataFrame(columns=["sucursal","vdr","estatus","odc","tipo_odc","producto","proveedor","esperado","recibido"])
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
