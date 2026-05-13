@@ -27,10 +27,27 @@ def load_data(cache_buster: int):
     try:
         response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=10)
         response.raise_for_status()  # Lanza excepción si status no es 200
-        excel_data = io.BytesIO(response.content)
-        # Especificar motor para evitar advertencias/errores
+
+        # --- Validación adicional: el contenido debe ser un archivo ZIP/Excel ---
+        content = response.content
+        # Un archivo Excel (.xlsx) comienza con los bytes 'PK' (0x50, 0x4B)
+        if not content.startswith(b'PK'):
+            # Intentamos decodificar los primeros 200 caracteres para ver si es HTML
+            preview = content[:200].decode('utf-8', errors='ignore')
+            if '<!DOCTYPE html>' in preview or '<html' in preview:
+                raise ValueError(
+                    "El enlace no devuelve un archivo Excel. Parece ser una página HTML.\n"
+                    "Verifica que el archivo exista en el repositorio y que la rama y ruta sean correctas."
+                )
+            else:
+                raise ValueError(
+                    "El archivo descargado no es un Excel válido (no tiene formato ZIP).\n"
+                    "Posiblemente la URL apunte a un archivo corrupto o de otro tipo."
+                )
+
+        excel_data = io.BytesIO(content)
         df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
-        
+
         cols_map = {
             'Sucursal': 'sucursal',
             'N° Doc.Compra (VDR)': 'vdr',
@@ -48,7 +65,6 @@ def load_data(cache_buster: int):
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
         return df
     except Exception as e:
-        # En lugar de st.error, retornamos DataFrame vacío y mostramos error fuera
         st.error(f"Error al cargar datos: {e}")
         # Retorna DataFrame vacío con las columnas esperadas
         return pd.DataFrame(columns=[
