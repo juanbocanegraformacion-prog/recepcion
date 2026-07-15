@@ -82,12 +82,29 @@ if not isinstance(df, pd.DataFrame):
 
 
 # ------------------------------------------------------------
-# FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
+# FILTROS EN SIDEBAR (PROVEEDOR + SUCURSAL + ESTATUS) Y MÉTRICAS
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    sucursales = df['sucursal'].unique().tolist() if not df.empty else []
+    # --- 1. FILTRO POR PROVEEDOR (NUEVO - DE PRIMERO) ---
+    proveedores = df['proveedor'].unique().tolist() if not df.empty else []
+    proveedor_seleccionado = st.selectbox(
+        "Proveedor",
+        options=["Todas"] + sorted(proveedores),
+        index=0,
+        help="Selecciona un proveedor para filtrar los datos, o 'Todas' para ver todos los proveedores."
+    )
+    
+    if df.empty:
+        df_prov = df.copy()
+    elif proveedor_seleccionado == "Todas":
+        df_prov = df.copy()
+    else:
+        df_prov = df[df['proveedor'] == proveedor_seleccionado].copy()
+
+    # --- 2. FILTRO POR SUCURSAL (BASADO EN EL PROVEEDOR) ---
+    sucursales = df_prov['sucursal'].unique().tolist() if not df_prov.empty else []
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
         options=["Todas"] + sorted(sucursales),
@@ -95,13 +112,14 @@ with st.sidebar:
         help="Selecciona una sucursal para filtrar los datos, o 'Todas' para ver el consolidado."
     )
     
-    if df.empty:
-        df_temp = df.copy()
+    if df_prov.empty:
+        df_temp = df_prov.copy()
     elif sucursal_seleccionada == "Todas":
-        df_temp = df.copy()
+        df_temp = df_prov.copy()
     else:
-        df_temp = df[df['sucursal'] == sucursal_seleccionada].copy()
+        df_temp = df_prov[df_prov['sucursal'] == sucursal_seleccionada].copy()
     
+    # --- 3. FILTRO POR ESTATUS (BASADO EN SUCURSAL Y PROVEEDOR) ---
     estatus_unicos = sorted(df_temp['estatus'].unique().tolist()) if not df_temp.empty else []
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
@@ -414,7 +432,6 @@ carrusel_html = f"""
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
         
-        // CAMBIO CRÍTICO: De 'const' a 'let' para evitar error al redimensionar la ventana
         let PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
@@ -642,8 +659,10 @@ carrusel_html = f"""
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 titulo = "📦 Monitor de Recepciones (VDR)"
-if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
+if proveedor_seleccionado != "Todas" or sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
     filtros_activos = []
+    if proveedor_seleccionado != "Todas":
+        filtros_activos.append(f"Proveedor: {proveedor_seleccionado}")
     if sucursal_seleccionada != "Todas":
         filtros_activos.append(f"Sucursal: {sucursal_seleccionada}")
     if estatus_seleccionado != "Todas":
