@@ -432,6 +432,7 @@ carrusel_html = f"""
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
         
+        // CAMBIO CRÍTICO: De 'const' a 'let' para evitar error al redimensionar la ventana
         let PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
@@ -659,10 +660,8 @@ carrusel_html = f"""
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 titulo = "📦 Monitor de Recepciones (VDR)"
-if proveedor_seleccionado != "Todas" or sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
+if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
     filtros_activos = []
-    if proveedor_seleccionado != "Todas":
-        filtros_activos.append(f"Proveedor: {proveedor_seleccionado}")
     if sucursal_seleccionada != "Todas":
         filtros_activos.append(f"Sucursal: {sucursal_seleccionada}")
     if estatus_seleccionado != "Todas":
