@@ -87,8 +87,9 @@ if not isinstance(df, pd.DataFrame):
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    # --- 1. FILTRO POR PROVEEDOR (NUEVO - DE PRIMERO) ---
-    proveedores = df['proveedor'].unique().tolist() if not df.empty else []
+    # --- 1. FILTRO POR PROVEEDOR ---
+    # `.dropna()` elimina vacíos y `.astype(str)` uniforma todo a texto para que sorted() no falle
+    proveedores = df['proveedor'].dropna().astype(str).unique().tolist() if not df.empty else []
     proveedor_seleccionado = st.selectbox(
         "Proveedor",
         options=["Todas"] + sorted(proveedores),
@@ -101,10 +102,11 @@ with st.sidebar:
     elif proveedor_seleccionado == "Todas":
         df_prov = df.copy()
     else:
-        df_prov = df[df['proveedor'] == proveedor_seleccionado].copy()
+        # Convertimos temporalmente a str al comparar por si el archivo trae códigos numéricos
+        df_prov = df[df['proveedor'].astype(str) == proveedor_seleccionado].copy()
 
     # --- 2. FILTRO POR SUCURSAL (BASADO EN EL PROVEEDOR) ---
-    sucursales = df_prov['sucursal'].unique().tolist() if not df_prov.empty else []
+    sucursales = df_prov['sucursal'].dropna().astype(str).unique().tolist() if not df_prov.empty else []
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
         options=["Todas"] + sorted(sucursales),
@@ -117,10 +119,10 @@ with st.sidebar:
     elif sucursal_seleccionada == "Todas":
         df_temp = df_prov.copy()
     else:
-        df_temp = df_prov[df_prov['sucursal'] == sucursal_seleccionada].copy()
+        df_temp = df_prov[df_prov['sucursal'].astype(str) == sucursal_seleccionada].copy()
     
     # --- 3. FILTRO POR ESTATUS (BASADO EN SUCURSAL Y PROVEEDOR) ---
-    estatus_unicos = sorted(df_temp['estatus'].unique().tolist()) if not df_temp.empty else []
+    estatus_unicos = sorted(df_temp['estatus'].dropna().astype(str).unique().tolist()) if not df_temp.empty else []
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
         options=["Todas"] + estatus_unicos,
@@ -133,7 +135,7 @@ with st.sidebar:
     elif estatus_seleccionado == "Todas":
         df_final = df_temp.copy()
     else:
-        df_final = df_temp[df_temp['estatus'] == estatus_seleccionado].copy()
+        df_final = df_temp[df_temp['estatus'].astype(str) == estatus_seleccionado].copy()
     
     df_final.reset_index(drop=True, inplace=True)
     
@@ -153,13 +155,12 @@ with st.sidebar:
                 if idx < num_status:
                     status = status_counts.index[idx]
                     count = status_counts.iloc[idx]
-                    cols[c].metric(label=status, value=count)
+                    cols[c].metric(label=str(status), value=count)
 
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
         st.session_state.cache_buster += 1
         st.rerun()
-
 # ------------------------------------------------------------
 # DATOS PARA EL CARRUSEL
 # ------------------------------------------------------------
