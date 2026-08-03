@@ -26,12 +26,11 @@ def load_data(cache_buster: int):
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
         response = requests.get(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}, timeout=10)
-        response.raise_for_status()  # Lanza excepción si status no es 200
+        response.raise_for_status()
         
         content = response.content
         
         # --- BLOQUE DE DIAGNÓSTICO INTELIGENTE ---
-        # Todo archivo .xlsx válido DEBE empezar con los bytes de cabecera ZIP: 'PK\x03\x04'
         if not content.startswith(b'PK\x03\x04'):
             if content.startswith(b"version https://git-lfs"):
                 raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real. Desactiva LFS para este archivo en tu repo.")
@@ -46,19 +45,20 @@ def load_data(cache_buster: int):
         excel_data = io.BytesIO(content)
         df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
         
+        # Mapeo corregido con las columnas exactas de VDR_alerta.xlsx
         cols_map = {
             'Sucursal': 'sucursal',
-            'N° Doc.Compra (VDR)': 'vdr',
-            'Estatus compra (VDR)': 'estatus',
-            'Número de orden de compra': 'odc',
-            'Tipo ODC': 'tipo_odc',
+            'Número de VDR': 'vdr',
+            'Estatus VDR': 'estatus',
+            'Número de ODC': 'odc',
+            'Estatus ODC': 'tipo_odc',
             'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',
-            'Empaques Esperados': 'esperado',
-            'Empaques Recibidos': 'recibido'
+            'Proveedor de compra': 'proveedor',
+            'Empaques Esperados (ODC)': 'esperado',
+            'Empaques Recibidos (VDR)': 'recibido'
         }
         
-        # Verificar que todas las columnas necesarias existan
+        # Filtrar y renombrar
         df = df[list(cols_map.keys())].rename(columns=cols_map)
         df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
@@ -69,16 +69,6 @@ def load_data(cache_buster: int):
             "sucursal", "vdr", "estatus", "odc", "tipo_odc",
             "producto", "proveedor", "esperado", "recibido"
         ])
-
-# Cargar datos (siempre asigna df, aunque sea vacío)
-df = load_data(st.session_state.cache_buster)
-
-# Si por algún motivo df no es DataFrame (ej. None), forzamos vacío
-if not isinstance(df, pd.DataFrame):
-    df = pd.DataFrame(columns=[
-        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
-        "producto", "proveedor", "esperado", "recibido"
-    ])
 
 
 # ------------------------------------------------------------
