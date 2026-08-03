@@ -21,7 +21,7 @@ if "cache_buster" not in st.session_state:
 # CARGA DE DATOS DESDE EXCEL (CON CADUCIDAD AUTOMÁTICA Y BUSTER)
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=300)
-def load_data(cache_buster: int):
+def load_data(cache_buster: int) -> pd.DataFrame:
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
@@ -30,22 +30,21 @@ def load_data(cache_buster: int):
         
         content = response.content
         
-        # --- BLOQUE DE DIAGNÓSTICO INTELIGENTE ---
+        # Diagnostic de formato
         if not content.startswith(b'PK\x03\x04'):
             if content.startswith(b"version https://git-lfs"):
-                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real. Desactiva LFS para este archivo en tu repo.")
+                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real.")
             elif b"<!DOCTYPE html>" in content or b"<html" in content.lower()[:100]:
-                raise ValueError("GitHub devolvió una página HTML. Verifica si el repositorio es privado o si la URL cambió.")
+                raise ValueError("GitHub devolvió una página HTML. Verifica si el repositorio es privado.")
             elif content.startswith(b'\xd0\xcf\x11\xe0'):
-                raise ValueError("El archivo es un formato antiguo de Excel (.xls) renombrado a .xlsx. Ábrelo en Excel y guárdalo nativamente como '.xlsx'.")
+                raise ValueError("El archivo es un formato antiguo .xls renombrado a .xlsx.")
             else:
-                raise ValueError(f"El contenido descargado no es un ZIP/XLSX válido. Primeros bytes recibidos: {content[:30]}")
-        # -----------------------------------------
+                raise ValueError(f"Contenido ZIP/XLSX no válido.")
 
         excel_data = io.BytesIO(content)
-        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
+        data = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
         
-        # Mapeo corregido con las columnas exactas de VDR_alerta.xlsx
+        # Mapeo exacto de columnas según el Excel VDR_alerta.xlsx
         cols_map = {
             'Sucursal': 'sucursal',
             'Número de VDR': 'vdr',
@@ -58,11 +57,10 @@ def load_data(cache_buster: int):
             'Empaques Recibidos (VDR)': 'recibido'
         }
         
-        # Filtrar y renombrar
-        df = df[list(cols_map.keys())].rename(columns=cols_map)
-        df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
-        df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
-        return df
+        data = data[list(cols_map.keys())].rename(columns=cols_map)
+        data["esperado"] = pd.to_numeric(data["esperado"], errors="coerce").fillna(0).astype(int)
+        data["recibido"] = pd.to_numeric(data["recibido"], errors="coerce").fillna(0).astype(int)
+        return data
     except Exception as e:
         st.error(f"⚠️ Error al cargar datos: {e}")
         return pd.DataFrame(columns=[
@@ -70,6 +68,16 @@ def load_data(cache_buster: int):
             "producto", "proveedor", "esperado", "recibido"
         ])
 
+# ------------------------------------------------------------
+# ASIGNACIÓN DE LA VARIABLE GLOBAL df
+# ------------------------------------------------------------
+df = load_data(st.session_state.cache_buster)
+
+if not isinstance(df, pd.DataFrame):
+    df = pd.DataFrame(columns=[
+        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
+        "producto", "proveedor", "esperado", "recibido"
+    ])
 
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (PROVEEDOR + SUCURSAL + ESTATUS) Y MÉTRICAS
@@ -77,41 +85,35 @@ def load_data(cache_buster: int):
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    # --- 1. FILTRO POR PROVEEDOR ---
-    # `.dropna()` elimina vacíos y `.astype(str)` uniforma todo a texto para que sorted() no falle
+    # 1. Filtro Proveedor
     proveedores = df['proveedor'].dropna().astype(str).unique().tolist() if not df.empty else []
     proveedor_seleccionado = st.selectbox(
         "Proveedor",
         options=["Todas"] + sorted(proveedores),
         index=0,
-        help="Selecciona un proveedor para filtrar los datos, o 'Todas' para ver todos los proveedores."
+        help="Selecciona un proveedor para filtrar los datos."
     )
     
-    if df.empty:
-        df_prov = df.copy()
-    elif proveedor_seleccionado == "Todas":
+    if df.empty or proveedor_seleccionado == "Todas":
         df_prov = df.copy()
     else:
-        # Convertimos temporalmente a str al comparar por si el archivo trae códigos numéricos
-        df_prov = df[df['proveedor'].astype(str) == proveedor_seleccionado].copy()
+        df_prov = df[df['proveedor'] == proveedor_seleccionado].copy()
 
-    # --- 2. FILTRO POR SUCURSAL (BASADO EN EL PROVEEDOR) ---
+    # 2. Filtro Sucursal
     sucursales = df_prov['sucursal'].dropna().astype(str).unique().tolist() if not df_prov.empty else []
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
         options=["Todas"] + sorted(sucursales),
         index=0,
-        help="Selecciona una sucursal para filtrar los datos, o 'Todas' para ver el consolidado."
+        help="Selecciona una sucursal para filtrar los datos."
     )
     
-    if df_prov.empty:
-        df_temp = df_prov.copy()
-    elif sucursal_seleccionada == "Todas":
+    if df_prov.empty or sucursal_seleccionada == "Todas":
         df_temp = df_prov.copy()
     else:
-        df_temp = df_prov[df_prov['sucursal'].astype(str) == sucursal_seleccionada].copy()
+        df_temp = df_prov[df_prov['sucursal'] == sucursal_seleccionada].copy()
     
-    # --- 3. FILTRO POR ESTATUS (BASADO EN SUCURSAL Y PROVEEDOR) ---
+    # 3. Filtro Estatus
     estatus_unicos = sorted(df_temp['estatus'].dropna().astype(str).unique().tolist()) if not df_temp.empty else []
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
@@ -120,12 +122,10 @@ with st.sidebar:
         help="Filtrar por el estatus de compra de la VDR."
     )
     
-    if df_temp.empty:
-        df_final = df_temp.copy()
-    elif estatus_seleccionado == "Todas":
+    if df_temp.empty or estatus_seleccionado == "Todas":
         df_final = df_temp.copy()
     else:
-        df_final = df_temp[df_temp['estatus'].astype(str) == estatus_seleccionado].copy()
+        df_final = df_temp[df_temp['estatus'] == estatus_seleccionado].copy()
     
     df_final.reset_index(drop=True, inplace=True)
     
@@ -145,12 +145,13 @@ with st.sidebar:
                 if idx < num_status:
                     status = status_counts.index[idx]
                     count = status_counts.iloc[idx]
-                    cols[c].metric(label=str(status), value=count)
+                    cols[c].metric(label=status, value=count)
 
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
         st.session_state.cache_buster += 1
         st.rerun()
+
 # ------------------------------------------------------------
 # DATOS PARA EL CARRUSEL
 # ------------------------------------------------------------
@@ -423,7 +424,6 @@ carrusel_html = f"""
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
         
-        // CAMBIO CRÍTICO: De 'const' a 'let' para evitar error al redimensionar la ventana
         let PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
@@ -462,7 +462,7 @@ carrusel_html = f"""
                         <span class="status-badge ${{getStatusClass(item.estatus)}}">${{item.estatus}}</span>
                     </div>
                     <div class="odc-row">
-                        <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:8px;">Tipo: ${{item.tipo_odc}}</span>
+                        <span>📄 ODC:</span> ${{item.odc}} <span style="margin-left:8px;">Estatus ODC: ${{item.tipo_odc}}</span>
                     </div>
                     <div class="producto" title="${{item.producto}}">${{item.producto}}</div>
                     <div class="proveedor-row">
@@ -651,13 +651,16 @@ carrusel_html = f"""
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 titulo = "📦 Monitor de Recepciones (VDR)"
-if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
+if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas" or proveedor_seleccionado != "Todas":
     filtros_activos = []
+    if proveedor_seleccionado != "Todas":
+        filtros_activos.append(f"Proveedor: {proveedor_seleccionado}")
     if sucursal_seleccionada != "Todas":
         filtros_activos.append(f"Sucursal: {sucursal_seleccionada}")
     if estatus_seleccionado != "Todas":
         filtros_activos.append(f"Estatus: {estatus_seleccionado}")
     titulo += " – " + " | ".join(filtros_activos)
+
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
