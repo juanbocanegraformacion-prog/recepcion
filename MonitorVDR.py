@@ -53,7 +53,7 @@ def load_data(cache_buster: int):
             'Número de orden de compra': 'odc',
             'Tipo ODC': 'tipo_odc',
             'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',
+            'Proveedor de compra': 'proveedor',
             'Empaques Esperados': 'esperado',
             'Empaques Recibidos': 'recibido'
         }
