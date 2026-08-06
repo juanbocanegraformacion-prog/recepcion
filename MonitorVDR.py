@@ -25,11 +25,31 @@ def load_data(cache_buster: int):
     url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
-        response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=10)
+        response = requests.get(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}, timeout=10)
         response.raise_for_status()  # Lanza excepción si status no es 200
-        excel_data = io.BytesIO(response.content)
-        # Especificar motor para evitar advertencias/errores
-        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=1, engine='openpyxl')
+        
+        content = response.content
+        
+        # --- BLOQUE DE DIAGNÓSTICO INTELIGENTE ---
+        # Todo archivo .xlsx válido DEBE empezar con los bytes de cabecera ZIP: 'PK\x03\x04'
+        if not content.startswith(b'PK\x03\x04'):
+            if content.startswith(b"version https://git-lfs"):
+                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real. Desactiva LFS para este archivo en tu repo.")
+            elif b"<!DOCTYPE html>" in content or b"<html" in content.lower()[:100]:
+                raise ValueError("GitHub devolvió una página HTML. Verifica si el repositorio es privado o si la URL cambió.")
+            elif content.startswith(b'\xd0\xcf\x11\xe0'):
+                raise ValueError("El archivo es un formato antiguo de Excel (.xls) renombrado a .xlsx. Ábrelo en Excel y guárdalo nativamente como '.xlsx'.")
+            else:
+                raise ValueError(f"El contenido descargado no es un ZIP/XLSX válido. Primeros bytes recibidos: {content[:30]}")
+        # -----------------------------------------
+
+        excel_data = io.BytesIO(content)
+        
+        # CORRECCIÓN: header=0 (lee la primera fila real)
+        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=0, engine='openpyxl')
+        
+        # CORRECCIÓN: Limpiar espacios ocultos en los nombres de las columnas
+        df.columns = df.columns.str.strip()
         
         cols_map = {
             'Sucursal': 'sucursal',
@@ -42,15 +62,24 @@ def load_data(cache_buster: int):
             'Empaques Esperados': 'esperado',
             'Empaques Recibidos': 'recibido'
         }
-        # Verificar que todas las columnas necesarias existan
-        df = df[list(cols_map.keys())].rename(columns=cols_map)
+        
+        # CORRECCIÓN: Verificar qué columnas existen realmente para evitar KeyError
+        columnas_existentes = [col for col in cols_map.keys() if col in df.columns]
+        df = df[columnas_existentes].rename(columns=cols_map)
+        
+        # Prevención de error por si faltan las columnas numéricas en el Excel
+        if "esperado" not in df.columns:
+            df["esperado"] = 0
+        if "recibido" not in df.columns:
+            df["recibido"] = 0
+            
         df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
+        
         return df
+        
     except Exception as e:
-        # En lugar de st.error, retornamos DataFrame vacío y mostramos error fuera
-        st.error(f"Error al cargar datos: {e}")
-        # Retorna DataFrame vacío con las columnas esperadas
+        st.error(f"⚠️ Error al cargar datos: {e}")
         return pd.DataFrame(columns=[
             "sucursal", "vdr", "estatus", "odc", "tipo_odc",
             "producto", "proveedor", "esperado", "recibido"
@@ -68,12 +97,29 @@ if not isinstance(df, pd.DataFrame):
 
 
 # ------------------------------------------------------------
-# FILTROS EN SIDEBAR (SUCURSAL + ESTATUS) Y MÉTRICAS
+# FILTROS EN SIDEBAR (PROVEEDOR + SUCURSAL + ESTATUS) Y MÉTRICAS
 # ------------------------------------------------------------
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    sucursales = df['sucursal'].unique().tolist()
+    # --- 1. FILTRO POR PROVEEDOR (NUEVO - DE PRIMERO) ---
+    proveedores = df['proveedor'].unique().tolist() if not df.empty else []
+    proveedor_seleccionado = st.selectbox(
+        "Proveedor",
+        options=["Todas"] + sorted(proveedores),
+        index=0,
+        help="Selecciona un proveedor para filtrar los datos, o 'Todas' para ver todos los proveedores."
+    )
+    
+    if df.empty:
+        df_prov = df.copy()
+    elif proveedor_seleccionado == "Todas":
+        df_prov = df.copy()
+    else:
+        df_prov = df[df['proveedor'] == proveedor_seleccionado].copy()
+
+    # --- 2. FILTRO POR SUCURSAL (BASADO EN EL PROVEEDOR) ---
+    sucursales = df_prov['sucursal'].unique().tolist() if not df_prov.empty else []
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
         options=["Todas"] + sorted(sucursales),
@@ -81,12 +127,15 @@ with st.sidebar:
         help="Selecciona una sucursal para filtrar los datos, o 'Todas' para ver el consolidado."
     )
     
-    if sucursal_seleccionada == "Todas":
-        df_temp = df.copy()
+    if df_prov.empty:
+        df_temp = df_prov.copy()
+    elif sucursal_seleccionada == "Todas":
+        df_temp = df_prov.copy()
     else:
-        df_temp = df[df['sucursal'] == sucursal_seleccionada].copy()
+        df_temp = df_prov[df_prov['sucursal'] == sucursal_seleccionada].copy()
     
-    estatus_unicos = sorted(df_temp['estatus'].unique().tolist())
+    # --- 3. FILTRO POR ESTATUS (BASADO EN SUCURSAL Y PROVEEDOR) ---
+    estatus_unicos = sorted(df_temp['estatus'].unique().tolist()) if not df_temp.empty else []
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
         options=["Todas"] + estatus_unicos,
@@ -94,7 +143,9 @@ with st.sidebar:
         help="Filtrar por el estatus de compra de la VDR."
     )
     
-    if estatus_seleccionado == "Todas":
+    if df_temp.empty:
+        df_final = df_temp.copy()
+    elif estatus_seleccionado == "Todas":
         df_final = df_temp.copy()
     else:
         df_final = df_temp[df_temp['estatus'] == estatus_seleccionado].copy()
@@ -103,20 +154,21 @@ with st.sidebar:
     
     st.markdown("---")
     st.header("ℹ️ Información")
-    total_vdr = df_final['vdr'].nunique()
+    total_vdr = df_final['vdr'].nunique() if not df_final.empty else 0
     st.metric("VDR únicas cargadas", total_vdr)
     
-    status_counts = df_final[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
-    st.markdown("**Distribución por estatus (VDR únicas):**")
-    num_status = len(status_counts)
-    for r in range(math.ceil(num_status/2)):
-        cols = st.columns(2)
-        for c in range(2):
-            idx = r*2 + c
-            if idx < num_status:
-                status = status_counts.index[idx]
-                count = status_counts.iloc[idx]
-                cols[c].metric(label=status, value=count)
+    if not df_final.empty:
+        status_counts = df_final[['vdr', 'estatus']].drop_duplicates()['estatus'].value_counts()
+        st.markdown("**Distribución por estatus (VDR únicas):**")
+        num_status = len(status_counts)
+        for r in range(math.ceil(num_status/2)):
+            cols = st.columns(2)
+            for c in range(2):
+                idx = r*2 + c
+                if idx < num_status:
+                    status = status_counts.index[idx]
+                    count = status_counts.iloc[idx]
+                    cols[c].metric(label=status, value=count)
 
     st.markdown("---")
     if st.button("🔄 Refrescar datos", help="Descarga de nuevo el archivo Excel actualizado"):
@@ -134,7 +186,7 @@ total_pages = max(1, math.ceil(total / PAGE_SIZE))
 pages = [registros[i:i+PAGE_SIZE] for i in range(0, total, PAGE_SIZE)]
 
 # ------------------------------------------------------------
-# HTML/CSS/JS DEL CARRUSEL (ROTACIÓN CADA 6 SEGUNDOS, SIN AUTO-REFRESCO DE PÁGINA)
+# HTML/CSS/JS DEL CARRUSEL
 # ------------------------------------------------------------
 carrusel_html = f"""
 <!DOCTYPE html>
@@ -311,7 +363,6 @@ carrusel_html = f"""
         }}
         .nav-btn:hover {{ background: var(--color-green); color: white; }}
 
-        /* PAGINACIÓN NUMÉRICA (BLOQUES DE 10) */
         .pagination-container {{
             display: flex;
             align-items: center;
@@ -395,7 +446,8 @@ carrusel_html = f"""
     <script>
         const pages = {json.dumps(pages)};
         const totalPages = pages.length;
-        const PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
+        
+        let PAGE_HEIGHT = document.querySelector('.carousel-viewport').clientHeight;
 
         const track = document.getElementById('track');
         const viewport = document.getElementById('viewport');
@@ -409,6 +461,7 @@ carrusel_html = f"""
         let paused = false;
 
         function getStatusClass(estatus) {{
+            if (!estatus) return 'other';
             const n = estatus.trim().toLowerCase().replace(/\s+/g, '-');
             if (n === 'integrada') return 'integrada';
             if (n.includes('en-validacion')) return 'en-validacion';
@@ -419,8 +472,11 @@ carrusel_html = f"""
 
         function renderPageGroup(pageItems) {{
             let html = '';
+            if (!pageItems || pageItems.length === 0) return html;
+            
             pageItems.forEach(item => {{
-                const pct = Math.min(100, Math.round((item.recibido / (item.esperado || 1)) * 100));
+                const esp = item.esperado || 1;
+                const pct = Math.min(100, Math.round((item.recibido / esp) * 100));
                 const over = item.recibido > item.esperado;
                 html += `
                 <div class="vdr-card">
@@ -447,18 +503,23 @@ carrusel_html = f"""
         }}
 
         function buildCarousel() {{
-            if (totalPages === 0) {{
-                viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles.</div>';
+            if (totalPages === 0 || pages[0].length === 0) {{
+                viewport.innerHTML = '<div class="empty-state">No hay recepciones disponibles con los filtros actuales.</div>';
                 prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
                 paginationContainer.innerHTML = '';
                 return;
             }}
+            
+            prevBtn.style.display = 'flex'; nextBtn.style.display = 'flex';
+            
             if (totalPages === 1) {{
                 track.innerHTML = `<div class="page-group active" style="top:20px;">${{renderPageGroup(pages[0])}}</div>`;
                 prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden';
                 paginationContainer.innerHTML = '';
                 return;
             }}
+
+            prevBtn.style.visibility = 'visible'; nextBtn.style.visibility = 'visible';
 
             const cloneLast = pages[totalPages-1];
             const cloneFirst = pages[0];
@@ -564,7 +625,7 @@ carrusel_html = f"""
 
         function startAuto() {{
             stopAuto();
-            if (totalPages > 1) autoTimer = setInterval(next, 6000);  // ← CAMBIO: de 10000 a 6000 ms
+            if (totalPages > 1) autoTimer = setInterval(next, 6000);
         }}
         function stopAuto() {{ if (autoTimer) clearInterval(autoTimer); }}
 
@@ -593,7 +654,7 @@ carrusel_html = f"""
                 const oldPage = currentPage;
                 const groups = track.querySelectorAll('.page-group');
                 groups.forEach((g, idx) => {{
-                    g.style.top = (idx * PAGE_HEIGHT) + 'px';
+                    g.style.top = (idx * newHeight) + 'px';
                 }});
                 PAGE_HEIGHT = newHeight;
                 goToPage(oldPage);
@@ -613,13 +674,16 @@ carrusel_html = f"""
 # INTERFAZ STREAMLIT
 # ------------------------------------------------------------
 titulo = "📦 Monitor de Recepciones (VDR)"
-if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas":
+if sucursal_seleccionada != "Todas" or estatus_seleccionado != "Todas" or proveedor_seleccionado != "Todas":
     filtros_activos = []
+    if proveedor_seleccionado != "Todas":
+        filtros_activos.append(f"Proveedor: {proveedor_seleccionado}")
     if sucursal_seleccionada != "Todas":
         filtros_activos.append(f"Sucursal: {sucursal_seleccionada}")
     if estatus_seleccionado != "Todas":
         filtros_activos.append(f"Estatus: {estatus_seleccionado}")
     titulo += " – " + " | ".join(filtros_activos)
+
 st.title(titulo)
 st.markdown("Cada página muestra hasta 10 recepciones. Navegue con botones, teclado o deslizando.")
 
