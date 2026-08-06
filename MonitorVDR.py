@@ -29,23 +29,21 @@ def load_data(cache_buster: int):
         response.raise_for_status()  # Lanza excepción si status no es 200
         
         content = response.content
-        
-        # --- BLOQUE DE DIAGNÓSTICO INTELIGENTE ---
-        if not content.startswith(b'PK\x03\x04'):
-            if content.startswith(b"version https://git-lfs"):
-                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real.")
-            elif b"<!DOCTYPE html>" in content or b"<html" in content.lower()[:100]:
-                raise ValueError("GitHub devolvió una página HTML.")
-            elif content.startswith(b'\xd0\xcf\x11\xe0'):
-                raise ValueError("El archivo es un formato antiguo de Excel (.xls).")
-            else:
-                raise ValueError(f"El contenido descargado no es un ZIP/XLSX válido.")
-        # -----------------------------------------
-
         excel_data = io.BytesIO(content)
         
-        # CORRECCIÓN 1: header=1 es correcto porque los títulos reales están en la 2da fila
-        df = pd.read_excel(excel_data, sheet_name=0, header=1, engine='openpyxl')
+        # --- LECTURA ROBUSTA CON PANDAS ---
+        # Se elimina la comprobación manual de bytes que forzaba el error.
+        try:
+            # Intento 1: Leer como Excel. No forzamos el motor 'openpyxl' para que pandas decida.
+            df = pd.read_excel(excel_data, sheet_name=0, header=1)
+        except Exception as e_excel:
+            try:
+                # Intento 2: Respaldo en caso de que el archivo sea un CSV guardado como .xlsx
+                excel_data.seek(0)
+                df = pd.read_csv(excel_data, header=1)
+            except Exception:
+                # Si falla, mostramos el error original de la lectura de Excel
+                raise ValueError(f"No se pudo procesar el archivo Excel. Detalle: {e_excel}")
         
         # Limpiar espacios ocultos en los nombres de las columnas
         df.columns = df.columns.str.strip()
