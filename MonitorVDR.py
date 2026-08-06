@@ -31,48 +31,51 @@ def load_data(cache_buster: int):
         content = response.content
         
         # --- BLOQUE DE DIAGNÓSTICO INTELIGENTE ---
-        # Todo archivo .xlsx válido DEBE empezar con los bytes de cabecera ZIP: 'PK\x03\x04'
         if not content.startswith(b'PK\x03\x04'):
             if content.startswith(b"version https://git-lfs"):
-                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real. Desactiva LFS para este archivo en tu repo.")
+                raise ValueError("GitHub está devolviendo un puntero de 'Git LFS' en lugar del archivo real.")
             elif b"<!DOCTYPE html>" in content or b"<html" in content.lower()[:100]:
-                raise ValueError("GitHub devolvió una página HTML. Verifica si el repositorio es privado o si la URL cambió.")
+                raise ValueError("GitHub devolvió una página HTML.")
             elif content.startswith(b'\xd0\xcf\x11\xe0'):
-                raise ValueError("El archivo es un formato antiguo de Excel (.xls) renombrado a .xlsx. Ábrelo en Excel y guárdalo nativamente como '.xlsx'.")
+                raise ValueError("El archivo es un formato antiguo de Excel (.xls).")
             else:
-                raise ValueError(f"El contenido descargado no es un ZIP/XLSX válido. Primeros bytes recibidos: {content[:30]}")
+                raise ValueError(f"El contenido descargado no es un ZIP/XLSX válido.")
         # -----------------------------------------
 
         excel_data = io.BytesIO(content)
         
-        # CORRECCIÓN: header=0 (lee la primera fila real)
-        df = pd.read_excel(excel_data, sheet_name="Sheet1", header=0, engine='openpyxl')
+        # CORRECCIÓN 1: header=1 es correcto porque los títulos reales están en la 2da fila
+        df = pd.read_excel(excel_data, sheet_name=0, header=1, engine='openpyxl')
         
-        # CORRECCIÓN: Limpiar espacios ocultos en los nombres de las columnas
+        # Limpiar espacios ocultos en los nombres de las columnas
         df.columns = df.columns.str.strip()
         
+        # CORRECCIÓN 2: Mapeo ajustado a las columnas REALES del archivo "VDR_alerta.xlsx"
         cols_map = {
             'Sucursal': 'sucursal',
-            'N° Doc.Compra (VDR)': 'vdr',
-            'Estatus compra (VDR)': 'estatus',
-            'Número de orden de compra': 'odc',
-            'Tipo ODC': 'tipo_odc',
+            'Número de VDR': 'vdr',
+            'Estatus VDR': 'estatus',
+            'Número de ODC': 'odc',
             'Producto': 'producto',
-            'Proveedor de transacción': 'proveedor',
-            'Empaques Esperados': 'esperado',
-            'Empaques Recibidos': 'recibido'
+            'Proveedor de compra': 'proveedor',
+            'Empaques Esperados (ODC)': 'esperado',
+            'Empaques Recibidos (VDR)': 'recibido'
         }
         
-        # CORRECCIÓN: Verificar qué columnas existen realmente para evitar KeyError
+        # Filtrar columnas que existan realmente y renombrar
         columnas_existentes = [col for col in cols_map.keys() if col in df.columns]
         df = df[columnas_existentes].rename(columns=cols_map)
         
-        # Prevención de error por si faltan las columnas numéricas en el Excel
-        if "esperado" not in df.columns:
-            df["esperado"] = 0
-        if "recibido" not in df.columns:
-            df["recibido"] = 0
-            
+        # CORRECCIÓN 3: Red de seguridad. Garantizar que TODAS las variables que usa Streamlit existan.
+        columnas_requeridas = ["sucursal", "vdr", "estatus", "odc", "tipo_odc", "producto", "proveedor", "esperado", "recibido"]
+        
+        for col in columnas_requeridas:
+            if col not in df.columns:
+                if col in ["esperado", "recibido"]:
+                    df[col] = 0
+                else:
+                    df[col] = "N/A"  # Por ejemplo, 'tipo_odc' no venía en el archivo, se llenará con 'N/A'
+                    
         df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
         
@@ -88,7 +91,6 @@ def load_data(cache_buster: int):
 # Cargar datos (siempre asigna df, aunque sea vacío)
 df = load_data(st.session_state.cache_buster)
 
-# Si por algún motivo df no es DataFrame (ej. None), forzamos vacío
 if not isinstance(df, pd.DataFrame):
     df = pd.DataFrame(columns=[
         "sucursal", "vdr", "estatus", "odc", "tipo_odc",
@@ -102,7 +104,6 @@ if not isinstance(df, pd.DataFrame):
 with st.sidebar:
     st.header("🔎 Filtros")
     
-    # --- 1. FILTRO POR PROVEEDOR (NUEVO - DE PRIMERO) ---
     proveedores = df['proveedor'].unique().tolist() if not df.empty else []
     proveedor_seleccionado = st.selectbox(
         "Proveedor",
@@ -118,7 +119,6 @@ with st.sidebar:
     else:
         df_prov = df[df['proveedor'] == proveedor_seleccionado].copy()
 
-    # --- 2. FILTRO POR SUCURSAL (BASADO EN EL PROVEEDOR) ---
     sucursales = df_prov['sucursal'].unique().tolist() if not df_prov.empty else []
     sucursal_seleccionada = st.selectbox(
         "Sucursal",
@@ -134,7 +134,6 @@ with st.sidebar:
     else:
         df_temp = df_prov[df_prov['sucursal'] == sucursal_seleccionada].copy()
     
-    # --- 3. FILTRO POR ESTATUS (BASADO EN SUCURSAL Y PROVEEDOR) ---
     estatus_unicos = sorted(df_temp['estatus'].unique().tolist()) if not df_temp.empty else []
     estatus_seleccionado = st.selectbox(
         "Estatus VDR",
