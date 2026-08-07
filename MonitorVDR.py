@@ -54,7 +54,7 @@ def load_data(cache_buster: int):
             'Número de VDR': 'vdr',
             'Estatus VDR': 'estatus',
             'Número de ODC': 'odc',
-            'Tipo de ODC': 'tipo_odc',
+            'Tipo ODC': 'tipo_odc',
             'Producto': 'producto',
             'Proveedor de compra': 'proveedor',
             'Empaques Esperados (ODC)': 'esperado',
