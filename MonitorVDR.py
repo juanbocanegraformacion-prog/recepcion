@@ -33,9 +33,10 @@ def load_data(cache_buster: int):
         
         # --- LECTURA ROBUSTA CON PANDAS ---
         # Se elimina la comprobación manual de bytes que forzaba el error.
+        # --- LECTURA ROBUSTA CON PANDAS ---
         try:
-            # Intento 1: Leer como Excel. No forzamos el motor 'openpyxl' para que pandas decida.
-            df = pd.read_excel(excel_data, sheet_name=0, header=1)
+            # Intento 1: Leer como Excel especificando el motor explícitamente
+            df = pd.read_excel(excel_data, sheet_name=0, header=1, engine='openpyxl')
         except Exception as e_excel:
             try:
                 # Intento 2: Respaldo en caso de que el archivo sea un CSV guardado como .xlsx
