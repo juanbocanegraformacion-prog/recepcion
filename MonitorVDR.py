@@ -22,14 +22,11 @@ if "cache_buster" not in st.session_state:
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data(cache_buster: int):
-    # CORRECCIÓN: Se cambia la URL para forzar la descarga del binario (archivos pesados/LFS)
-    # de: https://raw.githubusercontent.com/...
-    # a:  https://github.com/.../raw/...
+    # CORRECCIÓN 1: Se usa el enlace /raw/ de github.com para forzar la descarga de archivos grandes
     url_base = "https://github.com/juanbocanegraformacion-prog/recepcion/raw/main/VDR_alerta.xlsx"
-    
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
-        # Se aumentó ligeramente el timeout a 15 por si el archivo es muy pesado
+        # CORRECCIÓN 2: Se aumenta el timeout a 15 segundos
         response = requests.get(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}, timeout=15)
         response.raise_for_status()  # Lanza excepción si status no es 200
         
@@ -52,7 +49,7 @@ def load_data(cache_buster: int):
         # Limpiar espacios ocultos en los nombres de las columnas
         df.columns = df.columns.str.strip()
         
-        # CORRECCIÓN 2: Mapeo ajustado a las columnas REALES del archivo "VDR_alerta.xlsx"
+        # Mapeo ajustado a las columnas REALES del archivo "VDR_alerta.xlsx"
         cols_map = {
             'Sucursal': 'sucursal',
             'Número de VDR': 'vdr',
@@ -69,7 +66,7 @@ def load_data(cache_buster: int):
         columnas_existentes = [col for col in cols_map.keys() if col in df.columns]
         df = df[columnas_existentes].rename(columns=cols_map)
         
-        # CORRECCIÓN 3: Red de seguridad. Garantizar que TODAS las variables que usa Streamlit existan.
+        # Red de seguridad. Garantizar que TODAS las variables que usa Streamlit existan.
         columnas_requeridas = ["sucursal", "vdr", "estatus", "odc", "tipo_odc", "producto", "proveedor", "esperado", "recibido"]
         
         for col in columnas_requeridas:
@@ -77,7 +74,7 @@ def load_data(cache_buster: int):
                 if col in ["esperado", "recibido"]:
                     df[col] = 0
                 else:
-                    df[col] = "N/A"
+                    df[col] = "N/A"  # Por ejemplo, 'tipo_odc' no venía en el archivo, se llenará con 'N/A'
                     
         df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
@@ -90,6 +87,17 @@ def load_data(cache_buster: int):
             "sucursal", "vdr", "estatus", "odc", "tipo_odc",
             "producto", "proveedor", "esperado", "recibido"
         ])
+
+# Cargar datos (siempre asigna df, aunque sea vacío)
+df = load_data(st.session_state.cache_buster)
+
+if not isinstance(df, pd.DataFrame):
+    df = pd.DataFrame(columns=[
+        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
+        "producto", "proveedor", "esperado", "recibido"
+    ])
+
+
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (PROVEEDOR + SUCURSAL + ESTATUS) Y MÉTRICAS
 # ------------------------------------------------------------
