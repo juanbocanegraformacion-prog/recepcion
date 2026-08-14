@@ -22,17 +22,20 @@ if "cache_buster" not in st.session_state:
 # ------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=300)
 def load_data(cache_buster: int):
-    url_base = "https://raw.githubusercontent.com/juanbocanegraformacion-prog/recepcion/main/VDR_alerta.xlsx"
+    # CORRECCIÓN: Se cambia la URL para forzar la descarga del binario (archivos pesados/LFS)
+    # de: https://raw.githubusercontent.com/...
+    # a:  https://github.com/.../raw/...
+    url_base = "https://github.com/juanbocanegraformacion-prog/recepcion/raw/main/VDR_alerta.xlsx"
+    
     url = f"{url_base}?t={cache_buster}" if cache_buster else url_base
     try:
-        response = requests.get(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}, timeout=10)
+        # Se aumentó ligeramente el timeout a 15 por si el archivo es muy pesado
+        response = requests.get(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}, timeout=15)
         response.raise_for_status()  # Lanza excepción si status no es 200
         
         content = response.content
         excel_data = io.BytesIO(content)
         
-        # --- LECTURA ROBUSTA CON PANDAS ---
-        # Se elimina la comprobación manual de bytes que forzaba el error.
         # --- LECTURA ROBUSTA CON PANDAS ---
         try:
             # Intento 1: Leer como Excel especificando el motor explícitamente
@@ -74,7 +77,7 @@ def load_data(cache_buster: int):
                 if col in ["esperado", "recibido"]:
                     df[col] = 0
                 else:
-                    df[col] = "N/A"  # Por ejemplo, 'tipo_odc' no venía en el archivo, se llenará con 'N/A'
+                    df[col] = "N/A"
                     
         df["esperado"] = pd.to_numeric(df["esperado"], errors="coerce").fillna(0).astype(int)
         df["recibido"] = pd.to_numeric(df["recibido"], errors="coerce").fillna(0).astype(int)
@@ -87,17 +90,6 @@ def load_data(cache_buster: int):
             "sucursal", "vdr", "estatus", "odc", "tipo_odc",
             "producto", "proveedor", "esperado", "recibido"
         ])
-
-# Cargar datos (siempre asigna df, aunque sea vacío)
-df = load_data(st.session_state.cache_buster)
-
-if not isinstance(df, pd.DataFrame):
-    df = pd.DataFrame(columns=[
-        "sucursal", "vdr", "estatus", "odc", "tipo_odc",
-        "producto", "proveedor", "esperado", "recibido"
-    ])
-
-
 # ------------------------------------------------------------
 # FILTROS EN SIDEBAR (PROVEEDOR + SUCURSAL + ESTATUS) Y MÉTRICAS
 # ------------------------------------------------------------
